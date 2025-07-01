@@ -1,0 +1,72 @@
+services: # Раздел, в котором описываются все контейнеры общей инфраструктуры для всех микросервисов
+
+  otel-collector: # Сервис OpenTelemetry Collector для сбора и обработки телеметрии
+    image: otel/opentelemetry-collector-contrib:0.123.0 # Используем официальный образ OpenTelemetry Collector Contrib
+    container_name: otel-collector # Явное имя контейнера
+    command: ["--config=/etc/otel-collector-config.yaml"] # Указываем путь к файлу конфигурации
+    volumes:
+      - ./otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml # Монтируем конфигурацию коллектора
+    ports:
+      - "${OTEL_GRPC_PORT}:4317" # Порт для протокола OTLP gRPC
+      - "${OTEL_HTTP_PORT}:4318" # Порт для протокола OTLP HTTP
+      - "8888:8888" # Порт для метрик самого коллектора
+      - "8889:8889" # Порт для расширения zpages (дебаг)
+    restart: unless-stopped
+    # Автоматически перезапускаем контейнер при сбоях, но не при ручной остановке
+    networks:
+      - microservices-net
+      # Подключаем контейнер к общей сети микросервисов
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8888/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+      # Проверяем готовность коллектора через метрики
+    depends_on:
+      jaeger:
+        condition: service_healthy
+      # Коллектор зависит от jaeger, так как экспортирует туда данные
+
+  jaeger: # Сервис Jaeger для распределенной трассировки
+    image: jaegertracing/jaeger:2.6.0 # Последняя стабильная версия Jaeger v2
+    container_name: jaeger # Имя контейнера для удобного обращения
+    ports:
+      - "${JAEGER_UI_PORT}:16686" # Порт для веб-интерфейса Jaeger UI
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true # Включаем поддержку протокола OpenTelemetry
+      - COLLECTOR_OTLP_HTTP_ENABLED=true # Разрешаем прием данных по HTTP (порт 4318)
+      - COLLECTOR_OTLP_GRPC_ENABLED=true # Разрешаем прием данных по gRPC (порт 4317)
+      - STORAGE_TYPE=badger # Используем Badger как хранилище данных (встроенная key-value БД)
+      - BADGER_EPHEMERAL=false # Сохраняем данные на диск между перезапусками
+      - BADGER_DIRECTORY_VALUE=/badger/data # Директория для хранения значений (спаны, теги, логи)
+      - BADGER_DIRECTORY_KEY=/badger/key # Директория для хранения индексов (для быстрого поиска)
+      - BADGER_MAINTENANCE_INTERVAL=5m # Интервал обслуживания БД (сжатие, очистка, оптимизация)
+      - BADGER_TTL=168h # Время жизни данных (7 дней)
+      - QUERY_BASE_PATH=/jaeger # Базовый путь для UI (если за reverse proxy)
+    volumes:
+      - jaeger_data:/badger/data # Том для хранения данных трейсов
+      - jaeger_key:/badger/key # Том для хранения индексов
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:${JAEGER_UI_PORT}"] # Проверка доступности UI
+      interval: 5s # Интервал проверки
+      timeout: 3s # Таймаут проверки
+      retries: 3 # Количество попыток
+      start_period: 5s # Время ожидания перед началом проверок
+    restart: unless-stopped
+    # Автоматически перезапускаем контейнер при сбоях, но не при ручной остановке
+    networks:
+      - microservices-net
+      # Подключаем контейнер к общей сети микросервисов
+
+volumes: # Раздел с определением томов
+  jaeger_data: # Именованный том для хранения данных Jaeger
+  # Хранит данные трассировки
+  jaeger_key: # Именованный том для хранения ключей Jaeger
+
+networks:
+  microservices-net:
+    name: microservices-net
+    external: false
+    # ВАЖНО: здесь мы создаём сеть с именем microservices-net
+    # Другие docker-compose файлы будут к ней подключаться с external: true

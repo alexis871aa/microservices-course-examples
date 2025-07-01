@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package classification.v1;
+
+option go_package = "github.com/olezhek28/microservices-course-examples/week_7/tracing/shared/pkg/proto/classification/v1;classification_v1";
+
+service ClassificationService {
+  rpc ClassifyObject(ClassifyObjectRequest) returns (ClassifyObjectResponse);
+}
+
+// ClassifyObjectRequest - запрос на классификацию объекта
+message ClassifyObjectRequest {
+  string description = 1;
+  string color = 2;
+  int32 duration_seconds = 3;
+}
+
+// ClassifyObjectResponse - результат классификации объекта
+message ClassifyObjectResponse {
+  string object_type = 1;
+  float confidence = 2;
+  string explanation = 3;
+} 

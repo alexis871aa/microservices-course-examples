@@ -1,0 +1,37 @@
+services:
+  redis: 
+    image: redis:7.2.5-alpine3.20 # Лёгкий образ Redis последней стабильной версии
+    container_name: redis # Явное имя контейнера Redis
+
+    env_file:
+      - .env
+
+    ports:
+      - "${EXTERNAL_REDIS_PORT}:6379"
+      # Пробрасываем внутренний порт Redis на внешний, указанный в .env (например, 6380)
+      # Это позволяет IAM-сервису обращаться к Redis по порту хоста
+
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      # Проверка: если Redis отвечает на команду ping, значит он жив
+      interval: 10s # Проверяем Redis каждые 10 секунд
+      timeout: 5s # Ждём ответа до 5 секунд
+      retries: 5 # После 5 неудачных попыток контейнер считается unhealthy
+
+    restart: unless-stopped
+    # Перезапуск Redis при сбое, если контейнер не остановлен вручную
+
+    networks:
+      - microservices-net
+      # Redis подключается к той же общей сети, что и PostgreSQL, и остальные сервисы
+
+volumes: # Раздел томов — Docker сам создаст и будет управлять этим хранилищем данных
+  postgres_iam_data:
+  # Том для хранения данных PostgreSQL (таблицы, индексы и т.д.)
+  # Он сохраняется между перезапусками контейнера
+
+networks: # Определение используемой сети
+  microservices-net:
+    external: true
+    # Мы не создаём новую сеть, а подключаемся к внешней, общей для всех микросервисов
+    # Её должен создать docker-compose.yml или вручную: docker network create microservices-net

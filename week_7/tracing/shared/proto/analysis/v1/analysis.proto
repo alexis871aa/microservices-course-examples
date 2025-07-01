@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package analysis.v1;
+
+option go_package = "github.com/olezhek28/microservices-course-examples/week_7/tracing/shared/pkg/proto/analysis/v1;analysis_v1";
+
+service AnalysisService {
+  rpc AnalyzeSighting(AnalyzeSightingRequest) returns (AnalyzeSightingResponse);
+}
+
+// AnalyzeSightingRequest - запрос на анализ наблюдения НЛО
+message AnalyzeSightingRequest {
+  string uuid = 1;
+}
+
+// AnalyzeSightingResponse - результат анализа наблюдения
+message AnalyzeSightingResponse {
+  string analysis_result = 1;
+  string classification = 2;
+  float confidence_score = 3;
+}

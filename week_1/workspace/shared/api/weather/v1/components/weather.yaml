@@ -1,0 +1,22 @@
+type: object
+required:
+  - city
+  - temperature
+  - updated_at
+properties:
+  city:
+    type: string
+    description: Название города
+    minLength: 1
+    maxLength: 100
+    example: "Moscow"
+  temperature:
+    type: number
+    format: float
+    description: Температура в градусах Цельсия
+    example: 25.5
+  updated_at:
+    type: string
+    format: date-time
+    description: Время последнего обновления данных
+    example: "2023-05-15T10:30:00Z" 

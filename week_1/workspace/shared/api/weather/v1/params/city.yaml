@@ -1,0 +1,9 @@
+name: city
+in: path
+required: true
+description: Название города, для которого запрашиваются или обновляются данные о погоде
+schema:
+  type: string
+  minLength: 1
+  maxLength: 100
+  example: "Moscow" 

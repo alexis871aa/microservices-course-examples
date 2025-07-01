@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:15 # Образ Postgres версии 15
+    container_name: mypostgres # Имя контейнера базы данных
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER} # Пользователь базы данных из .env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} # Пароль базы данных из .env
+    ports:
+      - "${POSTGRES_PORT}:5432" # Пробрасываем порт: внешний из .env, внутренний фиксированный
+    volumes:
+      - pgdata:/var/lib/postgresql/data # Volume для сохранности данных базы
+    healthcheck: # Проверяем "здоровье" контейнера базы
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped # Автоматический перезапуск контейнера, кроме ручной остановки
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge # Обычная bridge-сеть Docker
+
+volumes:
+  pgdata: # Volume для данных базы, Docker создаст его автоматически

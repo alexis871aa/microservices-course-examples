@@ -1,0 +1,9 @@
+type: object
+required:
+  - temperature
+properties:
+  temperature:
+    type: number
+    format: float
+    description: Температура в градусах Цельсия
+    example: 25.5 

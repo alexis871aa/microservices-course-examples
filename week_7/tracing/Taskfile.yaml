@@ -1,0 +1,511 @@
+version: '3'
+
+# Глобальные переменные проекта
+vars:
+  GO_VERSION: '1.24'
+  GOLANGCI_LINT_VERSION: 'v2.1.5'
+  GCI_VERSION: 'v0.13.6'
+  GOFUMPT_VERSION: 'v0.8.0'
+  BUF_VERSION: '1.53.0'
+  PROTOC_GEN_GO_VERSION: 'v1.36.6'
+  PROTOC_GEN_GO_GRPC_VERSION: 'v1.5.1'
+  GRPCURL_VERSION: 'v1.9.3'
+  ENVSUBST_VERSION: 'v1.4.3'
+
+  BIN_DIR: '{{.ROOT_DIR}}/bin'
+  GOLANGCI_LINT: '{{.BIN_DIR}}/golangci-lint'
+  GCI: '{{.BIN_DIR}}/gci'
+  GOFUMPT: '{{.BIN_DIR}}/gofumpt'
+  BUF: '{{.BIN_DIR}}/buf'
+  PROTOC_GEN_GO: '{{.BIN_DIR}}/protoc-gen-go'
+  PROTOC_GEN_GO_GRPC: '{{.BIN_DIR}}/protoc-gen-go-grpc'
+  GRPCURL: '{{.BIN_DIR}}/grpcurl'
+  ENVSUBST: '{{.BIN_DIR}}/envsubst'
+  ENVDIR: '{{.ROOT_DIR}}/deploy/env'
+  COMPOSE_DIR: '{{.ROOT_DIR}}/deploy/compose'
+
+  MODULES: ufo platform analysis classification
+  SERVICES: core,ufo
+  GRPC_SERVER_ADDR: 'localhost:50051'
+
+tasks:
+  install-formatters:
+    desc: "Устанавливает форматтеры gci и gofumpt в ./bin"
+    cmds:
+      - |
+        [ -f {{.GOFUMPT}} ] || {
+          echo '📦 Устанавливаем gofumpt {{.GOFUMPT_VERSION}}...'
+          GOBIN={{.BIN_DIR}} go install mvdan.cc/gofumpt@{{.GOFUMPT_VERSION}}
+        }
+        [ -f {{.GCI}} ] || {
+          echo '📦 Устанавливаем gci {{.GCI_VERSION}}...'
+          GOBIN={{.BIN_DIR}} go install github.com/daixiang0/gci@{{.GCI_VERSION}}
+        }
+    status:
+      - test -x {{.GOFUMPT}}
+      - test -x {{.GCI}}
+
+  format:
+    desc: "Форматирует весь проект gofumpt + gci, исключая mocks"
+    deps: [ install-formatters ]
+    cmds:
+      - |
+        echo "🧼 Форматируем через gofumpt ..."
+        
+        for module in {{.MODULES}}; do
+          if [ -d "$module" ]; then
+            echo "🧼 Форматируем $module"
+            find $module -type f -name '*.go' ! -path '*/mocks/*' -exec {{.GOFUMPT}} -extra -w {} +
+          fi
+        done
+      - |
+        echo "🎯 Сортируем импорты через gci ..."
+        
+        for module in {{.MODULES}}; do
+          if [ -d "$module" ]; then
+            echo "🎯 Сортируем импорты в $module"
+            find $module -type f -name '*.go' ! -path '*/mocks/*' -exec {{.GCI}} write -s standard -s default -s "prefix(github.com/olezhek28/microservices-course-examples/)" {} +
+          fi
+        done
+
+  install-golangci-lint:
+    desc: "Устанавливает golangci-lint в каталог bin"
+    cmds:
+      - |
+        [ -f {{.GOLANGCI_LINT}} ] || {
+          mkdir -p {{.BIN_DIR}}
+          echo "📦 Устанавливаем golangci-lint {{.GOLANGCI_LINT_VERSION}}..."
+          GOBIN={{.BIN_DIR}} go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
+        }
+    status:
+      - test -x {{.GOLANGCI_LINT}}
+
+  lint:
+    desc: "Запускает golangci-lint для всех модулей"
+    deps: [ install-golangci-lint ]
+    vars:
+      MODULES: '{{.MODULES}}'
+      GOLANGCI_LINT: '{{.GOLANGCI_LINT}}'
+    cmds:
+      - |
+        set -e
+        ERR=0
+        echo "🔍 Линтим все модули ..."
+        for mod in {{.MODULES}}; do
+          if [ -d "$mod" ]; then
+            echo "🔍 Линтим $mod module"
+            {{.GOLANGCI_LINT}} run $mod/... --config=.golangci.yml || ERR=1
+          fi
+        done
+        exit $ERR
+
+  deps:update:
+    desc: "Обновление зависимостей в go.mod во всех модулях"
+    cmds:
+      - |
+        echo "🔄 Обновление зависимостей в go.work"
+        go work sync
+        echo "🔄 Обновление зависимостей в go.mod во всех модулях"
+        for mod in {{.MODULES}}; do
+          if [ -d "$mod" ]; then
+            echo "🔄 Обновление зависимостей в $mod"
+            (cd "$mod" && go mod tidy -compat=1.24) || exit 1
+          fi
+        done
+
+  install-buf:
+    desc: "Устанавливает Buf в каталог bin"
+    cmds:
+      - |
+        mkdir -p {{.BIN_DIR}}
+        [ -f {{.BUF}} ] || {
+          echo '📦 Устанавливаем buf {{.BUF_VERSION}}...'
+          GOBIN={{.BIN_DIR}} go install github.com/bufbuild/buf/cmd/buf@v{{.BUF_VERSION}}
+        }
+    status:
+      - test -x {{.BUF}}
+
+  proto:install-plugins:
+    desc: "Устанавливает protoc плагины в каталог bin"
+    cmds:
+      - |
+        [ -f {{.PROTOC_GEN_GO}} ] || {
+          echo '📦 Installing protoc-gen-go...'
+          GOBIN={{.BIN_DIR}} go install google.golang.org/protobuf/cmd/protoc-gen-go@{{.PROTOC_GEN_GO_VERSION}}
+        }
+        [ -f {{.PROTOC_GEN_GO_GRPC}} ] || {
+          echo '📦 Installing protoc-gen-go-grpc...'
+          GOBIN={{.BIN_DIR}} go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@{{.PROTOC_GEN_GO_GRPC_VERSION}}
+        }
+
+  proto:lint:
+    deps: [ install-buf, proto:install-plugins ]
+    desc: Проверка .proto-файлов на соответствие стилю
+    dir: shared/proto
+    cmds:
+      - '{{.BUF}} lint'
+
+  proto:gen:
+    deps: [ install-buf, proto:install-plugins, proto:lint ]
+    desc: Генерация Go-кода из .proto
+    dir: shared/proto
+    cmds:
+      - '{{.BUF}} generate'
+
+  grpcurl:install:
+    desc: "Устанавливает grpcurl в каталог bin"
+    cmds:
+      - |
+        [ -f {{.GRPCURL}} ] || {
+          echo '📦 Устанавливаем grpcurl {{.GRPCURL_VERSION}}...'
+          GOBIN={{.BIN_DIR}} go install github.com/fullstorydev/grpcurl/cmd/grpcurl@{{.GRPCURL_VERSION}}
+        }
+    status:
+      - test -x {{.GRPCURL}}
+
+  up-core:
+    desc: Поднять core контейнеры
+    dir: deploy/compose/core
+    cmds:
+      - echo "[task] 🚀 Поднимаем core контейнеры"
+      - docker compose up --build --detach
+
+  down-core:
+    desc: Остановить и удалить core контейнеры
+    dir: deploy/compose/core
+    cmds:
+      - echo "[task] 🛑 Останавливаем core контейнеры"
+      - docker compose down --volumes
+
+  up-ufo:
+    desc: Поднять UFO сервис и все его зависимости
+    dir: deploy/compose/ufo
+    cmds:
+      - echo "[task] 📦 Поднимаем UFO сервис с зависимостями"
+      - docker compose up --build --detach
+
+  down-ufo:
+    desc: Остановить и удалить UFO сервис и все его зависимости
+    dir: deploy/compose/ufo
+    cmds:
+      - echo "[task] 🛑 Останавливаем UFO сервис с зависимостями"
+      - docker compose down --volumes
+
+  up-all:
+    desc: Поднять все сервисы по очереди вместе с зависимостями
+    cmds:
+      - task up-core
+      - task up-ufo
+
+  down-all:
+    desc: Остановить и удалить все сервисы по очереди вместе с зависимостями
+    cmds:
+      - task down-core
+      - task down-ufo
+
+  # === gRPC тестирование через grpcurl ===
+
+  grpc:test:create:
+    desc: "Тестирует создание наблюдения НЛО"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "🛸 Создаем новое наблюдение НЛО..."
+      - |
+        {{.GRPCURL}} -plaintext -d '{
+          "info": {
+            "observed_at": "2024-01-15T20:30:00Z",
+            "location": "Москва, Красная площадь",
+            "description": "Яркий светящийся объект треугольной формы",
+            "color": "зеленый",
+            "sound": false,
+            "duration_seconds": 120
+          }
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Create
+
+  grpc:test:get:
+    desc: "Тестирует получение наблюдения НЛО по UUID"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "🔍 Получаем наблюдение НЛО по UUID..."
+      - echo "⚠️  Замените UUID на реальный из результата Create:"
+      - |
+        {{.GRPCURL}} -plaintext -d '{
+          "uuid": "REPLACE_WITH_REAL_UUID"
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Get
+
+  grpc:test:update:
+    desc: "Тестирует обновление наблюдения НЛО"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "✏️  Обновляем наблюдение НЛО..."
+      - echo "⚠️  Замените UUID на реальный из результата Create:"
+      - |
+        {{.GRPCURL}} -plaintext -d '{
+          "uuid": "REPLACE_WITH_REAL_UUID",
+          "update_info": {
+            "location": "Санкт-Петербург, Дворцовая площадь",
+            "description": "Обновленное описание: объект изменил форму",
+            "color": "синий",
+            "duration_seconds": 180
+          }
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Update
+
+  grpc:test:delete:
+    desc: "Тестирует мягкое удаление наблюдения НЛО"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "🗑️  Удаляем наблюдение НЛО (мягкое удаление)..."
+      - echo "⚠️  Замените UUID на реальный из результата Create:"
+      - |
+        {{.GRPCURL}} -plaintext -d '{
+          "uuid": "REPLACE_WITH_REAL_UUID"
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Delete
+
+  grpc:test:all:
+    desc: "Запускает полный цикл тестирования gRPC API"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "🚀 Запускаем полный цикл тестирования UFO gRPC API..."
+      - echo ""
+      - echo "🛸 Создаем тестовое наблюдение..."
+      - |
+        UUID=$({{.GRPCURL}} -plaintext -d '{
+          "info": {
+            "observed_at": "2024-01-15T20:30:00Z",
+            "location": "Тестовая локация",
+            "description": "Автоматический тест gRPC API",
+            "color": "красный",
+            "sound": true,
+            "duration_seconds": 60
+          }
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Create | grep '"uuid"' | cut -d'"' -f4)
+        
+        if [ -n "$UUID" ]; then
+          echo "✅ Создано наблюдение с UUID: $UUID"
+          
+          echo ""
+          echo "🔍 Получаем созданное наблюдение..."
+          {{.GRPCURL}} -plaintext -d "{\"uuid\": \"$UUID\"}" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Get
+          
+          echo ""
+          echo "✏️  Обновляем наблюдение..."
+          {{.GRPCURL}} -plaintext -d "{
+            \"uuid\": \"$UUID\",
+            \"update_info\": {
+              \"description\": \"Обновленное описание через автотест\",
+              \"color\": \"фиолетовый\"
+            }
+          }" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Update
+          
+          echo ""
+          echo "🔍 Проверяем обновленное наблюдение..."
+          {{.GRPCURL}} -plaintext -d "{\"uuid\": \"$UUID\"}" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Get
+          
+          echo ""
+          echo "🗑️  Удаляем наблюдение..."
+          {{.GRPCURL}} -plaintext -d "{\"uuid\": \"$UUID\"}" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Delete
+          
+          echo ""
+          echo "🔍 Проверяем удаленное наблюдение (должно содержать deleted_at)..."
+          {{.GRPCURL}} -plaintext -d "{\"uuid\": \"$UUID\"}" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Get
+          
+          echo ""
+          echo "✅ Полный цикл тестирования завершен!"
+        else
+          echo "❌ Не удалось создать наблюдение"
+          exit 1
+        fi
+
+  env:install-envsubst:
+    desc: "Устанавливает envsubst для замены переменных в конфигурации"
+    cmds:
+      - |
+        [ -f {{.ENVSUBST}} ] || {
+          echo "📦 Устанавливаем envsubst версии {{.ENVSUBST_VERSION}}..."
+          GOBIN={{.BIN_DIR}} go install github.com/a8m/envsubst/cmd/envsubst@{{.ENVSUBST_VERSION}}
+        }
+        echo "✅ envsubst установлен: {{.ENVSUBST}}"
+
+  env:generate:
+    desc: "Генерирует .env файлы для всех сервисов из шаблонов и единого файла конфигурации"
+    deps: [ env:install-envsubst ]
+    cmds:
+      - |
+        ENV_FILE="{{.ENVDIR}}/.env"
+        TEMPLATE_FILE="{{.ENVDIR}}/.env.template"
+        SCRIPT="{{.ENVDIR}}/generate-env.sh"
+        
+        if [ ! -f "$ENV_FILE" ]; then
+          if [ -f "$TEMPLATE_FILE" ]; then
+            echo "🔄 Файл $ENV_FILE не найден, создаем из шаблона $TEMPLATE_FILE"
+            cp "$TEMPLATE_FILE" "$ENV_FILE"
+            echo "✅ Создан файл $ENV_FILE. Проверьте и отредактируйте значения переменных при необходимости."
+          else
+            echo "❌ Шаблон $TEMPLATE_FILE не найден!"
+            exit 1
+          fi
+        fi
+        
+        chmod +x "$SCRIPT"
+        # Передаем список сервисов в виде строки с разделителями-запятыми
+        export SERVICES="{{.SERVICES}}"
+        export ENV_FILE="$ENV_FILE"
+        ENV_SUBST={{.ENVSUBST}} "$SCRIPT" services
+
+  env:generate-monitoring:
+    desc: "Генерирует конфигурационные файлы для системы мониторинга из шаблонов"
+    deps: [ env:install-envsubst ]
+    cmds:
+      - |
+        SCRIPT="{{.ENVDIR}}/generate-env.sh"
+        ENV_FILE="{{.COMPOSE_DIR}}/core/.env"
+        
+        chmod +x "$SCRIPT"
+        export ENV_FILE="$ENV_FILE"
+        ENV_SUBST={{.ENVSUBST}} "$SCRIPT" monitoring
+
+  env:generate-all:
+    desc: "Генерирует все конфигурационные файлы (.env для сервисов и конфиги для мониторинга)"
+    cmds:
+      - task: env:generate
+      - task: env:generate-monitoring
+      - echo "🎉 Все конфигурационные файлы успешно сгенерированы"
+
+  # === Тестирование трейсинга ===
+
+  tracing:test:create-triangle:
+    desc: "Создает наблюдение треугольного объекта для тестирования трейсинга"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "🛸 Создаем треугольный объект для трейсинга..."
+      - |
+        {{.GRPCURL}} -plaintext -d '{
+          "info": {
+            "observed_at": "2024-01-15T21:00:00Z",
+            "location": "Санкт-Петербург",
+            "description": "Большой треугольный объект",
+            "color": "красный",
+            "sound": false,
+            "duration_seconds": 600
+          }
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Create
+
+  tracing:test:create-saucer:
+    desc: "Создает наблюдение классической тарелки для тестирования трейсинга"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "🛸 Создаем классическую тарелку для трейсинга..."
+      - |
+        {{.GRPCURL}} -plaintext -d '{
+          "info": {
+            "observed_at": "2024-01-15T22:00:00Z",
+            "location": "Москва",
+            "description": "Классическая летающая тарелка в форме диска",
+            "color": "белый",
+            "sound": true,
+            "duration_seconds": 180
+          }
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Create
+
+  tracing:test:analyze:
+    desc: "Анализирует наблюдение по UUID (создает полную цепочку трейсов)"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "🔍 Анализируем наблюдение (замените UUID на реальный)..."
+      - echo "⚠️  Замените UUID на реальный из результата Create:"
+      - |
+        {{.GRPCURL}} -plaintext -d '{
+          "uuid": "REPLACE_WITH_REAL_UUID"
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/AnalyzeSighting
+
+  tracing:test:full-cycle:
+    desc: "Полный цикл тестирования трейсинга: создание + анализ"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "🚀 Запускаем полный цикл тестирования трейсинга..."
+      - echo ""
+      - echo "🛸 Создаем треугольный объект..."
+      - |
+        UUID1=$({{.GRPCURL}} -plaintext -d '{
+          "info": {
+            "observed_at": "2024-01-15T21:00:00Z",
+            "location": "Санкт-Петербург",
+            "description": "Большой треугольный объект",
+            "color": "красный",
+            "sound": false,
+            "duration_seconds": 600
+          }
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Create | grep '"uuid"' | cut -d'"' -f4)
+        
+        if [ -n "$UUID1" ]; then
+          echo "✅ Создан треугольный объект с UUID: $UUID1"
+          echo ""
+          echo "🔍 Анализируем треугольный объект..."
+          {{.GRPCURL}} -plaintext -d "{\"uuid\": \"$UUID1\"}" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/AnalyzeSighting
+        fi
+        
+        echo ""
+        echo "🛸 Создаем классическую тарелку..."
+        UUID2=$({{.GRPCURL}} -plaintext -d '{
+          "info": {
+            "observed_at": "2024-01-15T22:00:00Z",
+            "location": "Москва",
+            "description": "Классическая летающая тарелка в форме диска",
+            "color": "белый",
+            "sound": true,
+            "duration_seconds": 180
+          }
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Create | grep '"uuid"' | cut -d'"' -f4)
+        
+        if [ -n "$UUID2" ]; then
+          echo "✅ Создана классическая тарелка с UUID: $UUID2"
+          echo ""
+          echo "🔍 Анализируем классическую тарелку..."
+          {{.GRPCURL}} -plaintext -d "{\"uuid\": \"$UUID2\"}" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/AnalyzeSighting
+        fi
+        
+        echo ""
+        echo "🛸 Создаем сферический объект..."
+        UUID3=$({{.GRPCURL}} -plaintext -d '{
+          "info": {
+            "observed_at": "2024-01-15T23:00:00Z",
+            "location": "Екатеринбург",
+            "description": "Светящийся сферический объект",
+            "color": "оранжевый",
+            "sound": false,
+            "duration_seconds": 45
+          }
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Create | grep '"uuid"' | cut -d'"' -f4)
+        
+        if [ -n "$UUID3" ]; then
+          echo "✅ Создан сферический объект с UUID: $UUID3"
+          echo ""
+          echo "🔍 Анализируем сферический объект..."
+          {{.GRPCURL}} -plaintext -d "{\"uuid\": \"$UUID3\"}" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/AnalyzeSighting
+        fi
+        
+        echo ""
+        echo "✅ Полный цикл тестирования трейсинга завершен!"
+        echo "🔗 Откройте Jaeger UI: http://localhost:16686"
+        echo "🔍 Выберите сервис 'ufo-service' и найдите трейсы"
+
+  tracing:check-services:
+    desc: "Проверяет доступность сервисов в Jaeger"
+    cmds:
+      - echo "🔍 Проверяем доступные сервисы в Jaeger..."
+      - |
+        if curl -s http://localhost:16686/api/services > /dev/null; then
+          echo "✅ Jaeger доступен"
+          echo "📊 Доступные сервисы:"
+          curl -s http://localhost:16686/api/services | jq -r '.data[]' 2>/dev/null || curl -s http://localhost:16686/api/services
+        else
+          echo "❌ Jaeger недоступен на http://localhost:16686"
+          echo "💡 Запустите: task up-all"
+        fi
+
+  tracing:open-jaeger:
+    desc: "Открывает Jaeger UI в браузере"
+    cmds:
+      - echo "🌐 Открываем Jaeger UI..."
+      - |
+        open http://localhost:16686 || echo "💡 Откройте вручную: http://localhost:16686"

@@ -1,0 +1,17 @@
+openapi: 3.0.3
+info:
+  title: WeatherService API
+  version: 1.0.0
+  description: API для работы с данными о погоде
+x-ogen:
+  target: ./pkg/openapi/weather/v1
+  package: weather_v1
+  clean: true
+
+tags:
+  - name: Weather
+    description: Операции с данными о погоде — получение и обновление информации
+
+paths:
+  /api/v1/weather/{city}:
+    $ref: ./paths/weather_by_city.yaml

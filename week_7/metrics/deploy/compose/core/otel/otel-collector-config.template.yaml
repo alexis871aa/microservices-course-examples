@@ -1,0 +1,121 @@
+# Секция receivers (приемники) описывает, откуда OpenTelemetry Collector получает данные телеметрии
+receivers:
+  # OTLP (OpenTelemetry Protocol) - стандартный протокол для передачи телеметрии
+  # Используется для приема данных от инструментированных приложений
+  otlp:
+    protocols:
+      # gRPC протокол - бинарный протокол на основе HTTP/2, обеспечивает высокую производительность
+      grpc:
+        # Адрес, на котором коллектор слушает gRPC соединения
+        # 0.0.0.0 означает "все сетевые интерфейсы"
+        endpoint: 0.0.0.0:${OTEL_GRPC_PORT}
+        # Максимальный размер сообщения для приема
+        max_recv_msg_size_mib: 64
+        # Таймаут ожидания соединения
+        read_buffer_size: 512_000
+      # HTTP/JSON протокол - более простой в отладке, но менее производительный вариант
+      http:
+        # Адрес, на котором коллектор слушает HTTP соединения
+        endpoint: 0.0.0.0:${OTEL_HTTP_PORT}
+        # Включение CORS для веб-клиентов
+        cors:
+          allowed_origins: ["*"]
+          allowed_headers: ["*"]
+
+# Секция processors (обработчики) описывает, как обрабатывать полученные данные
+# перед отправкой их в экспортеры
+processors:
+  # Батчинг - группировка данных в пакеты для эффективной передачи
+  batch:
+    # Максимальный размер пакета (количество элементов)
+    send_batch_size: ${OTEL_BATCH_SIZE}
+    # Максимальное время ожидания перед отправкой неполного пакета
+    timeout: ${OTEL_BATCH_TIMEOUT}
+    # Максимальное кол-во отправляемых элементов за один раз
+    send_batch_max_size: 1000
+  
+  # Ограничитель памяти - защищает от утечек памяти и перегрузки
+  memory_limiter:
+    # Как часто проверять использование памяти
+    check_interval: 1s
+    # Максимальный процент использования памяти (от системной)
+    limit_percentage: 75
+    # Максимальный процент внезапного скачка использования памяти
+    spike_limit_percentage: 15
+  
+  # Определение ресурсов - добавляет метаданные о системе, на которой работает коллектор
+  resourcedetection:
+    # Типы детекторов: env - из переменных окружения, system - из системной информации
+    detectors: [env, system]
+    # Таймаут операции обнаружения ресурсов
+    timeout: 5s
+
+# Секция exporters (экспортеры) описывает, куда отправлять обработанные данные телеметрии
+exporters:
+  # Экспорт метрик в Prometheus через remote write
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
+    # Настройки аутентификации (если нужны)
+    # auth:
+    #   authenticator: basicauth/prometheus
+    # Настройки retry
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    # Настройки очереди
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 5000
+  
+  # Экспорт данных в логи - полезно для отладки
+  debug:
+    # Уровень детализации логов
+    verbosity: ${OTEL_LOG_LEVEL}
+
+# Секция extensions (расширения) описывает дополнительные возможности коллектора
+extensions:
+  # Проверка здоровья - эндпоинт для мониторинга состояния коллектора
+  health_check:
+    # Адрес, на котором доступен эндпоинт проверки здоровья
+    endpoint: 0.0.0.0:${OTEL_HEALTH_CHECK_PORT}
+    # Настройки проверки для определения состояния
+    path: /health
+    check_collector_pipeline: 
+      enabled: true
+  
+  # Профилировщик Go - для анализа производительности коллектора
+  pprof:
+    # Адрес для доступа к профилировщику
+    endpoint: 0.0.0.0:${OTEL_PPROF_PORT}
+  
+  # zPages - встроенные страницы диагностики для отладки и мониторинга
+  zpages:
+    # Адрес для доступа к диагностическим страницам
+    endpoint: 0.0.0.0:${OTEL_ZPAGES_PORT}
+
+# Секция service описывает, как компоненты (receivers, processors, exporters, extensions)
+# соединяются вместе в рабочие пайплайны
+service:
+  # Активация расширений
+  extensions: [health_check, pprof, zpages]
+  
+  # Настройки телеметрии для самого коллектора
+  telemetry:
+    logs:
+      level: "info"
+    metrics:
+      address: 0.0.0.0:8888
+  
+  # Определение пайплайнов для разных типов телеметрии
+  pipelines:
+    # Пайплайн для метрик
+    metrics:
+      # Используемые приемники данных
+      receivers: [otlp]
+      # Последовательность обработчиков для трансформации данных
+      processors: [memory_limiter, batch, resourcedetection]
+      # Куда отправлять обработанные метрики
+      exporters: [prometheusremotewrite, debug]

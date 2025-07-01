@@ -1,0 +1,102 @@
+services: # Раздел, в котором описываются все контейнеры общей инфраструктуры для всех микросервисов
+
+  otel-collector: # Сервис OpenTelemetry Collector для сбора и обработки телеметрии
+    image: otel/opentelemetry-collector-contrib:0.123.0 # Используем официальный образ OpenTelemetry Collector Contrib
+    container_name: otel-collector # Явное имя контейнера
+    command: ["--config=/etc/otel-collector-config.yaml"] # Указываем путь к файлу конфигурации
+    volumes:
+      - ./otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml # Монтируем конфигурацию коллектора
+    ports:
+      - "${OTEL_GRPC_PORT}:4317" # Порт для протокола OTLP gRPC
+      - "${OTEL_HTTP_PORT}:4318" # Порт для протокола OTLP HTTP
+      - "8888:8888" # Порт для метрик самого коллектора
+      - "8889:8889" # Порт для расширения zpages (дебаг)
+    restart: unless-stopped
+    # Автоматически перезапускаем контейнер при сбоях, но не при ручной остановке
+    networks:
+      - microservices-net
+      # Подключаем контейнер к общей сети микросервисов
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8888/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+      # Проверяем готовность коллектора через метрики
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      # Коллектор зависит от prometheus для отправки метрик
+
+  prometheus: # Сервис Prometheus для сбора и хранения метрик
+    image: prom/prometheus:v3.3.1 # Используем официальный образ Prometheus последней стабильной версии
+    container_name: prometheus # Явное имя контейнера
+    ports:
+      - "${PROMETHEUS_PORT}:9090" # Пробрасываем порт Prometheus на хост-машину
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml # Монтируем конфигурацию Prometheus
+      - prometheus_data:/prometheus # Подключаем volume для хранения данных Prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml' # Указываем путь к файлу конфигурации внутри контейнера
+      - '--storage.tsdb.path=/prometheus' # Директория для хранения временных рядов (метрик) в персистентном томе
+      - '--web.console.libraries=/etc/prometheus/console_libraries' # Путь к JavaScript библиотекам для веб-интерфейса
+      - '--web.console.templates=/etc/prometheus/consoles' # Путь к шаблонам консоли для веб-интерфейса
+      - '--web.enable-lifecycle' # Включает HTTP API для управления Prometheus (позволяет перезагружать конфигурацию без рестарта через POST запрос на /-/reload)
+      - '--web.enable-remote-write-receiver' # Включает поддержку remote write API для приема метрик от OpenTelemetry Collector
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--spider", "http://localhost:${PROMETHEUS_PORT}/-/healthy" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+      # Проверяем готовность Prometheus по endpoint /-/healthy
+    restart: unless-stopped
+    # Автоматически перезапускаем контейнер при сбоях, но не при ручной остановке
+    networks:
+      - microservices-net
+      # Подключаем контейнер к общей сети микросервисов
+
+  grafana: # Сервис Grafana для визуализации метрик
+    image: grafana/grafana:12.0.0 # Используем официальный образ Grafana последней стабильной версии
+    container_name: grafana # Явное имя контейнера
+    ports:
+      - "${GRAFANA_PORT}:3000" # Пробрасываем порт Grafana на хост-машину
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin} # Имя пользователя администратора
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin} # Пароль администратора
+      - GF_USERS_ALLOW_SIGN_UP=false # Запрещаем регистрацию новых пользователей
+      - GF_AUTH_ANONYMOUS_ENABLED=true # Разрешаем анонимный доступ для удобства разработки
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer # Роль для анонимных пользователей - только просмотр
+    volumes:
+      - grafana_data:/var/lib/grafana # Подключаем volume для хранения данных Grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning # Монтируем директорию с настройками для автоматического провижининга
+      - ./grafana/dashboards:/var/lib/grafana/dashboards # Монтируем директорию с дашбордами
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      # Гарантируем, что Grafana стартует только после того, как Prometheus станет healthy
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--spider", "http://localhost:${GRAFANA_PORT}/api/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+      # Проверяем готовность Grafana по endpoint /api/health
+    restart: unless-stopped
+    # Автоматически перезапускаем контейнер при сбоях, но не при ручной остановке
+    networks:
+      - microservices-net
+      # Подключаем контейнер к общей сети микросервисов
+
+volumes: # Раздел с определением томов
+  prometheus_data: # Именованный том для хранения данных Prometheus
+  # Хранит временные ряды с метриками
+  grafana_data: # Именованный том для хранения данных Grafana
+  # Хранит настройки, пользователей и другие данные Grafana
+
+networks:
+  microservices-net:
+    name: microservices-net
+    external: false
+    # ВАЖНО: здесь мы создаём сеть с именем microservices-net
+    # Другие docker-compose файлы будут к ней подключаться с external: true

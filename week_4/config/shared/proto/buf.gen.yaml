@@ -1,0 +1,13 @@
+version: v2
+# Удаляет сгенеренное ранее, то что находится в out каждого плагина.
+clean: true
+
+plugins:
+  - local: ../../bin/protoc-gen-go
+    out: ../pkg/proto
+    opt:
+      - paths=source_relative
+  - local: ../../bin/protoc-gen-go-grpc
+    out: ../pkg/proto
+    opt:
+      - paths=source_relative

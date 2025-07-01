@@ -1,0 +1,59 @@
+version: '3'
+
+# Глобальные переменные проекта
+vars:
+  GO_VERSION: '1.24'
+  GOLANGCI_LINT_VERSION: 'v2.1.5'
+  GCI_VERSION: 'v0.13.6'
+  GOFUMPT_VERSION: 'v0.8.0'
+
+  BIN_DIR: '{{.ROOT_DIR}}/bin'
+  GOLANGCI_LINT: '{{.BIN_DIR}}/golangci-lint'
+  GCI: '{{.BIN_DIR}}/gci'
+  GOFUMPT: '{{.BIN_DIR}}/gofumpt'
+
+tasks:
+  install-formatters:
+    desc: "Устанавливает форматтеры gci и gofumpt в ./bin"
+    cmds:
+      - |
+        [ -f {{.GOFUMPT}} ] || {
+          echo '📦 Устанавливаем gofumpt {{.GOFUMPT_VERSION}}...'
+          GOBIN={{.BIN_DIR}} go install mvdan.cc/gofumpt@{{.GOFUMPT_VERSION}}
+        }
+        [ -f {{.GCI}} ] || {
+          echo '📦 Устанавливаем gci {{.GCI_VERSION}}...'
+          GOBIN={{.BIN_DIR}} go install github.com/daixiang0/gci@{{.GCI_VERSION}}
+        }
+    status:
+      - test -x {{.GOFUMPT}}
+      - test -x {{.GCI}}
+
+  format:
+    desc: "Форматирует весь проект gofumpt + gci"
+    deps: [ install-formatters ]
+    cmds:
+      - |
+        echo "🧼 Форматируем через gofumpt ..."
+        find . -type f -name '*.go' ! -path '*/mocks/*' -exec {{.GOFUMPT}} -extra -w {} +
+      - |
+        echo "🎯 Сортируем импорты через gci ..."
+        find . -type f -name '*.go' ! -path '*/mocks/*' -exec {{.GCI}} write -s standard -s default -s "prefix(github.com/olezhek28/microservices-course-examples/)" {} +
+
+  install-golangci-lint:
+    desc: "Устанавливает golangci-lint в каталог bin"
+    cmds:
+      - |
+        [ -f {{.GOLANGCI_LINT}} ] || {
+          mkdir -p {{.BIN_DIR}}
+          echo "📦 Устанавливаем golangci-lint {{.GOLANGCI_LINT_VERSION}}..."
+          GOBIN={{.BIN_DIR}} go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
+        }
+    status:
+      - test -x {{.GOLANGCI_LINT}}
+
+  lint:
+    desc: "Запускает golangci-lint для всех модулей"
+    deps: [ install-golangci-lint ]
+    cmds:
+      - '{{.GOLANGCI_LINT}} run ./... --config=.golangci.yml' 

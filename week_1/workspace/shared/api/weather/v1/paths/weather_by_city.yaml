@@ -1,0 +1,76 @@
+parameters:
+  - $ref: ../params/city.yaml
+
+get:
+  summary: Get weather data for a city
+  operationId: GetWeatherByCity
+  tags:
+    - Weather
+  responses:
+    '200':
+      description: Weather information successfully retrieved
+      content:
+        application/json:
+          schema:
+            $ref: ../components/weather.yaml
+    '404':
+      description: Weather data for specified city not found
+      content:
+        application/json:
+          schema:
+            $ref: ../components/errors/not_found_error.yaml
+    '400':
+      description: Bad request - validation error
+      content:
+        application/json:
+          schema:
+            $ref: ../components/errors/bad_request_error.yaml
+    '500':
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: ../components/errors/internal_server_error.yaml
+    default:
+      description: Unexpected error
+      content:
+        application/json:
+          schema:
+            $ref: ../components/errors/generic_error.yaml
+
+put:
+  summary: Update or create weather data for a city
+  operationId: UpdateWeatherByCity
+  tags:
+    - Weather
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../components/update_weather_request.yaml
+  responses:
+    '200':
+      description: Weather information successfully updated
+      content:
+        application/json:
+          schema:
+            $ref: ../components/weather.yaml
+    '400':
+      description: Bad request - validation error
+      content:
+        application/json:
+          schema:
+            $ref: ../components/errors/bad_request_error.yaml
+    '500':
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: ../components/errors/internal_server_error.yaml
+    default:
+      description: Unexpected error
+      content:
+        application/json:
+          schema:
+            $ref: ../components/errors/generic_error.yaml 

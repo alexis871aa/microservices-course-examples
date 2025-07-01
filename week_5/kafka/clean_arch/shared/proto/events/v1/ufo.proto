@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/olezhek28/microservices-course-examples/week_5/clean_arch/shared/pkg/proto/events/v1;events_v1";
+
+// Наблюдение НЛО зарегистрировано
+message UFORecorded {
+  string uuid = 1; // Уникальный идентификатор наблюдения
+  google.protobuf.Timestamp observed_at = 2; // Дата и время наблюдения
+  string location = 3; // Место наблюдения
+  string description = 4; // Описание наблюдаемого объекта
+}
