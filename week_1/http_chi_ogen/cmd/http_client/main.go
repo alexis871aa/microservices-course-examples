@@ -7,7 +7,7 @@ import (
 
 	"github.com/brianvoe/gofakeit/v7"
 
-	weatherV1 "github.com/olezhek28/microservices-course-examples/week_1/http_chi_ogen/pkg/openapi/weather/v1"
+	weatherV1 "github.com/alexis871aa/microservices-course-examples/week_1/http_chi_ogen/pkg/openapi/weather/v1"
 )
 
 const (
