@@ -11,7 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	ufoV1 "github.com/olezhek28/microservices-course-examples/week_1/grpc/pkg/proto/ufo/v1"
+	ufoV1 "github.com/alexis871aa/microservices-course-examples/week_1/grpc/pkg/proto/ufo/v1"
 )
 
 const serverAddress = "localhost:50051"
@@ -123,24 +123,29 @@ func deleteSighting(ctx context.Context, client ufoV1.UFOServiceClient, uuid str
 }
 
 func main() {
+	// создаём контекст, потому что он понадобится
 	ctx := context.Background()
 
+	// создаём коннекшн, то есть подключение. Передаём адрес, а вторым параметром идёт опции (если посмотреть на этот метод).
 	conn, err := grpc.NewClient(
 		serverAddress,
+		// нас интересует одна опция WithTransportCredentials, передаём в неё insecure.NewCredentials() из пакета insecure
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
+	// выше получается мы создаём коннекшн, но не используем транспортную безопасность (TSL, известный как Secure Socket Layer (SSL) протокол транспортной безопасности). Чтобы себе жизнь не усложнять мы делаем как описано выше, явно показывая grpc что мы не собираемся шифровать, что это будет несекьюрное подключение
 	if err != nil {
 		log.Printf("failed to connect: %v\n", err)
 		return
 	}
+	// закрываем за собой коннекшн, когда клиент отработает
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
 			log.Printf("failed to close connect: %v", cerr)
 		}
 	}()
 
-	// Создаем gRPC клиент
-	client := ufoV1.NewUFOServiceClient(conn)
+	// Создаем gRPC клиент, берём из сгенерированного файла, передаём туда conn наш коннекшн
+	client := ufoV1.NewUFOServiceClient(conn) // после этого у клиента теперь можно вызывать методы
 
 	log.Println("=== Тестирование API для работы с наблюдениями НЛО ===")
 	log.Println()

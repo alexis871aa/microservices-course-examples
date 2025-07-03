@@ -19,14 +19,15 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	ufoV1 "github.com/olezhek28/microservices-course-examples/week_1/grpc/pkg/proto/ufo/v1"
+	ufoV1 "github.com/alexis871aa/microservices-course-examples/week_1/grpc/pkg/proto/ufo/v1"
 )
 
 const grpcPort = 50051
 
 // ufoService реализует gRPC сервис для работы с наблюдениями НЛО
 type ufoService struct {
-	ufoV1.UnimplementedUFOServiceServer
+	// встраиваем ту самую сгенерированную структуру для того, чтобы удовлетворять сгенерированному интерфейсу
+	ufoV1.UnimplementedUFOServiceServer // таким образом, у нас получается, что все методы применяются(копируются) в нашей структуре ufoService и своей реализацией как бы перекрывать старое наследие
 
 	mu        sync.RWMutex
 	sightings map[string]*ufoV1.Sighting
@@ -131,11 +132,15 @@ func (s *ufoService) Delete(_ context.Context, req *ufoV1.DeleteRequest) (*empty
 }
 
 func main() {
+	// запускаем листенер, передаём ему протокол и порт
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", grpcPort))
+	// проверяем всё ли ок, ошибок нет, потому что порт может быть занят
 	if err != nil {
 		log.Printf("failed to listen: %v\n", err)
 		return
 	}
+
+	// в defer закрываем листенер, чтобы подчистить хвосты
 	defer func() {
 		if cerr := lis.Close(); cerr != nil {
 			log.Printf("failed to close listener: %v\n", cerr)
@@ -150,11 +155,15 @@ func main() {
 		sightings: make(map[string]*ufoV1.Sighting),
 	}
 
-	ufoV1.RegisterUFOServiceServer(s, service)
+	// из сгеерированного кода есть такой метод для регистрации gRPC сервера и туда передаём наш созданный выше сервер s и сервис, который мы зарегистрировали service, то есть объект той структуры, который реализует интерфейс нашего сервера
+	ufoV1.RegisterUFOServiceServer(s, service) // вот этот метод метчит описанные вверху сущности
 
 	// Включаем рефлексию для отладки
+	// Рефлексия - это мы грубо говоря даём возможность клиенту самому спрашивать у сервера, какие у него методы
+	// тут просто так, если этого не сделать, то нам придётся в какой-то postman подгружать протофайл, а нам этого не нужно
 	reflection.Register(s)
 
+	// запускаем в отдельной горутине, так Serve() блокирующий
 	go func() {
 		log.Printf("🚀 gRPC server listening on %d\n", grpcPort)
 		err = s.Serve(lis)
@@ -169,6 +178,6 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("🛑 Shutting down gRPC server...")
-	s.GracefulStop()
+	s.GracefulStop() // вызываем метод GracefulStop(), который обеспечивает нам мягкое выключение
 	log.Println("✅ Server stopped")
 }

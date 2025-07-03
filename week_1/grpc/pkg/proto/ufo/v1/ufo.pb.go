@@ -9,15 +9,14 @@
 package ufo_v1
 
 import (
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
 )
 
 const (
@@ -626,7 +625,7 @@ const file_ufo_v1_ufo_proto_rawDesc = "" +
 	"\x06Create\x12\x15.ufo.v1.CreateRequest\x1a\x16.ufo.v1.CreateResponse\x12.\n" +
 	"\x03Get\x12\x12.ufo.v1.GetRequest\x1a\x13.ufo.v1.GetResponse\x127\n" +
 	"\x06Update\x12\x15.ufo.v1.UpdateRequest\x1a\x16.google.protobuf.Empty\x127\n" +
-	"\x06Delete\x12\x15.ufo.v1.DeleteRequest\x1a\x16.google.protobuf.EmptyBXZVgithub.com/olezhek28/microservices-course-examples/week_1/grpc/pkg/proto/ufo/v1;ufo_v1b\x06proto3"
+	"\x06Delete\x12\x15.ufo.v1.DeleteRequest\x1a\x16.google.protobuf.EmptyBZZXgithub.com/alexis871aa/microservices-course-examples/week_1/grpc/pkg/proto/ufo/v1;ufo_v1b\x06proto3"
 
 var (
 	file_ufo_v1_ufo_proto_rawDescOnce sync.Once
@@ -640,25 +639,23 @@ func file_ufo_v1_ufo_proto_rawDescGZIP() []byte {
 	return file_ufo_v1_ufo_proto_rawDescData
 }
 
-var (
-	file_ufo_v1_ufo_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
-	file_ufo_v1_ufo_proto_goTypes  = []any{
-		(*SightingInfo)(nil),           // 0: ufo.v1.SightingInfo
-		(*SightingUpdateInfo)(nil),     // 1: ufo.v1.SightingUpdateInfo
-		(*Sighting)(nil),               // 2: ufo.v1.Sighting
-		(*CreateRequest)(nil),          // 3: ufo.v1.CreateRequest
-		(*CreateResponse)(nil),         // 4: ufo.v1.CreateResponse
-		(*GetRequest)(nil),             // 5: ufo.v1.GetRequest
-		(*GetResponse)(nil),            // 6: ufo.v1.GetResponse
-		(*UpdateRequest)(nil),          // 7: ufo.v1.UpdateRequest
-		(*DeleteRequest)(nil),          // 8: ufo.v1.DeleteRequest
-		(*timestamppb.Timestamp)(nil),  // 9: google.protobuf.Timestamp
-		(*wrapperspb.StringValue)(nil), // 10: google.protobuf.StringValue
-		(*wrapperspb.BoolValue)(nil),   // 11: google.protobuf.BoolValue
-		(*wrapperspb.Int32Value)(nil),  // 12: google.protobuf.Int32Value
-		(*emptypb.Empty)(nil),          // 13: google.protobuf.Empty
-	}
-)
+var file_ufo_v1_ufo_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_ufo_v1_ufo_proto_goTypes = []any{
+	(*SightingInfo)(nil),           // 0: ufo.v1.SightingInfo
+	(*SightingUpdateInfo)(nil),     // 1: ufo.v1.SightingUpdateInfo
+	(*Sighting)(nil),               // 2: ufo.v1.Sighting
+	(*CreateRequest)(nil),          // 3: ufo.v1.CreateRequest
+	(*CreateResponse)(nil),         // 4: ufo.v1.CreateResponse
+	(*GetRequest)(nil),             // 5: ufo.v1.GetRequest
+	(*GetResponse)(nil),            // 6: ufo.v1.GetResponse
+	(*UpdateRequest)(nil),          // 7: ufo.v1.UpdateRequest
+	(*DeleteRequest)(nil),          // 8: ufo.v1.DeleteRequest
+	(*timestamppb.Timestamp)(nil),  // 9: google.protobuf.Timestamp
+	(*wrapperspb.StringValue)(nil), // 10: google.protobuf.StringValue
+	(*wrapperspb.BoolValue)(nil),   // 11: google.protobuf.BoolValue
+	(*wrapperspb.Int32Value)(nil),  // 12: google.protobuf.Int32Value
+	(*emptypb.Empty)(nil),          // 13: google.protobuf.Empty
+}
 var file_ufo_v1_ufo_proto_depIdxs = []int32{
 	9,  // 0: ufo.v1.SightingInfo.observed_at:type_name -> google.protobuf.Timestamp
 	10, // 1: ufo.v1.SightingInfo.color:type_name -> google.protobuf.StringValue

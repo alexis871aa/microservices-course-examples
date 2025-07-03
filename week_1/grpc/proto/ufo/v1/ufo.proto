@@ -1,13 +1,15 @@
 syntax = "proto3";
 
 // Package ufo.v1 содержит API для работы с наблюдениями НЛО
-package ufo.v1;
+package ufo.v1; // нужно скорее для случая, когда один протофайл импортируем в другой и можем к нему обращаться
 
+// раздел импортов других протофайлов
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 import "google/protobuf/empty.proto";
 
-option go_package = "github.com/olezhek28/microservices-course-examples/week_1/grpc/pkg/proto/ufo/v1;ufo_v1";
+// по сути мы явно задаём какой пакет будет сгенерирован у гошного кода и куда мы его положим
+option go_package = "github.com/alexis871aa/microservices-course-examples/week_1/grpc/pkg/proto/ufo/v1;ufo_v1";
 
 // UFOService предоставляет API для работы с наблюдениями НЛО
 service UFOService {
