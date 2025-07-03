@@ -11,7 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	ufoV1 "github.com/olezhek28/microservices-course-examples/week_1/grpc_gateway_swagger_validation/pkg/proto/ufo/v1"
+	ufoV1 "github.com/alexis871aa/microservices-course-examples/week_1/grpc_gateway_swagger_validation/pkg/proto/ufo/v1"
 )
 
 const serverAddress = "localhost:50051"
