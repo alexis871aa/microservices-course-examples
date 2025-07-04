@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -13,7 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime" // очень важно делать go get именно с v2!
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -177,6 +178,7 @@ func main() {
 		}
 	}()
 
+	// с этого момента различие с сервером только gRPC!
 	// Запускаем HTTP сервер с gRPC Gateway и Swagger UI
 	var gwServer *http.Server
 	go func() {
@@ -185,13 +187,14 @@ func main() {
 		defer cancel()
 
 		// Создаем мультиплексор для HTTP запросов
-		mux := runtime.NewServeMux()
+		mux := runtime.NewServeMux() // это объект, который может менеджерить http запросы!
 
 		// Настраиваем опции для соединения с gRPC сервером
-		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())} // по аналогии с клиентом там применялась опция для явного указания не секьюрного подключения
 
 		// Регистрируем gRPC-gateway хендлеры
-		err = ufoV1.RegisterUFOServiceHandlerFromEndpoint(
+		err = ufoV1.RegisterUFOServiceHandlerFromEndpoint( // ufoV1 это пакет с генерированным кодом!
+			// RegisterUFOServiceHandlerFromEndpoint - функция мапит наш http mux с grpc серваком
 			ctx,
 			mux,
 			fmt.Sprintf("localhost:%d", grpcPort),
@@ -202,8 +205,11 @@ func main() {
 			return
 		}
 
+		// блок с Swagger-UI!
 		// Создаем файловый сервер для swagger-ui
-		fileServer := http.FileServer(http.Dir("api"))
+		// Файловый сервер это сервер, который внутри имеет тоже HTTP сервер, но он внутри себя умеет создавать миниатюрную файловую систему и туда что-то скопировать
+		fileServer := http.FileServer(http.Dir("api")) // подсовываем папку api, тут относительный путь, где корневой директорией является директория с названием проекта
+		// Можно настроить через Edit Configurations --> Working directory
 
 		// Создаем HTTP маршрутизатор
 		httpMux := http.NewServeMux()
@@ -212,10 +218,12 @@ func main() {
 		httpMux.Handle("/api/", mux)
 
 		// Swagger UI эндпоинты
-		httpMux.Handle("/swagger-ui.html", fileServer)
-		httpMux.Handle("/swagger.json", fileServer)
+		httpMux.Handle("/swagger-ui.html", fileServer) // моунтим файловый сервер на маршрут /swagger-ui.html
+		httpMux.Handle("/swagger.json", fileServer)    // моунтим файловый сервер на маршрут /swagger.json
 
-		// Редирект с корня на Swagger UI
+		// Таким образом, нас HTTP сервер получается на отдельных эндпоинтах поддерживает fileServer, а с другой стороны он выполняет роль прокси для gRPC сервака
+
+		// Редирект с корня на Swagger UI, то есть заходя на корень нашего http сервера, мы редиректимся на /swagger-ui.html
 		httpMux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/" {
 				http.Redirect(w, r, "/swagger-ui.html", http.StatusMovedPermanently)
@@ -224,17 +232,18 @@ func main() {
 			fileServer.ServeHTTP(w, r)
 		}))
 
-		// Создаем HTTP сервер
+		// Создаем HTTP сервер, делаем это как обычно!
+		// HTTP сервер это сервер, в который мы можем регистрировать маршруты и к каждому маршруту прицеплять свой обработчик
 		gwServer = &http.Server{
 			Addr:              fmt.Sprintf(":%d", httpPort),
 			Handler:           httpMux,
 			ReadHeaderTimeout: 10 * time.Second,
 		}
 
-		// Запускаем HTTP сервер
+		// Запускаем HTTP сервер и тоже как обычно!
 		log.Printf("🌐 HTTP server with gRPC-Gateway and Swagger UI listening on %d\n", httpPort)
 		err = gwServer.ListenAndServe()
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && errors.Is(err, http.ErrServerClosed) { // лучше использовать пакет errors, прокидывая сначала свою ошибку и вторым аргументом то, с чем сравниваем!
 			log.Printf("Failed to serve HTTP: %v\n", err)
 			return
 		}

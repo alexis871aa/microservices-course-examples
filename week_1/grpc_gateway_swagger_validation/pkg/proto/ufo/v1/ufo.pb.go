@@ -627,7 +627,7 @@ const file_ufo_v1_ufo_proto_rawDesc = "" +
 	"\x06Create\x12\x15.ufo.v1.CreateRequest\x1a\x16.ufo.v1.CreateResponse\"\x16\x82\xd3\xe4\x93\x02\x10:\x01*\"\v/api/v1/ufo\x12J\n" +
 	"\x03Get\x12\x12.ufo.v1.GetRequest\x1a\x13.ufo.v1.GetResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/api/v1/ufo/{uuid}\x12V\n" +
 	"\x06Update\x12\x15.ufo.v1.UpdateRequest\x1a\x16.google.protobuf.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17:\x01*2\x12/api/v1/ufo/{uuid}\x12S\n" +
-	"\x06Delete\x12\x15.ufo.v1.DeleteRequest\x1a\x16.google.protobuf.Empty\"\x1a\x82\xd3\xe4\x93\x02\x14*\x12/api/v1/ufo/{uuid}BsZqgithub.com/olezhek28/microservices-course-examples/week_1/grpc_gateway_swagger_validation/pkg/proto/ufo/v1;ufo_v1b\x06proto3"
+	"\x06Delete\x12\x15.ufo.v1.DeleteRequest\x1a\x16.google.protobuf.Empty\"\x1a\x82\xd3\xe4\x93\x02\x14*\x12/api/v1/ufo/{uuid}BuZsgithub.com/alexis871aa/microservices-course-examples/week_1/grpc_gateway_swagger_validation/pkg/proto/ufo/v1;ufo_v1b\x06proto3"
 
 var (
 	file_ufo_v1_ufo_proto_rawDescOnce sync.Once

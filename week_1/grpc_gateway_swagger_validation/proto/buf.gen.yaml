@@ -1,6 +1,6 @@
 version: v2
 # Удаляет сгенеренное ранее, то что находится в out каждого плагина.
-clean: true
+# clean: true
 
 plugins:
   - local: ../bin/protoc-gen-go
