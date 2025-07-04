@@ -19,8 +19,8 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/olezhek28/microservices-course-examples/week_1/grpc_with_interceptor/internal/interceptor"
-	ufoV1 "github.com/olezhek28/microservices-course-examples/week_1/grpc_with_interceptor/pkg/proto/ufo/v1"
+	"github.com/alexis871aa/microservices-course-examples/week_1/grpc_with_interceptor/internal/interceptor"
+	ufoV1 "github.com/alexis871aa/microservices-course-examples/week_1/grpc_with_interceptor/pkg/proto/ufo/v1"
 )
 
 const grpcPort = 50051
