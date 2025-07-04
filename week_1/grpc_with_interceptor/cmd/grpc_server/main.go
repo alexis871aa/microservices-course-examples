@@ -143,6 +143,7 @@ func main() {
 
 	// Создаем gRPC сервер с интерцептором логирования
 	s := grpc.NewServer(
+		// позволяет делать несколько интерцепторов
 		grpc.ChainUnaryInterceptor(
 			grpc.UnaryServerInterceptor(interceptor.LoggerInterceptor()),
 			grpc.UnaryServerInterceptor(interceptor.LoggerInterceptor2()),
