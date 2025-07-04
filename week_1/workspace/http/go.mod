@@ -1,10 +1,10 @@
-module github.com/olezhek28/microservices-course-examples/week_1/workspace/http
+module github.com/alexis871aa/microservices-course-examples/week_1/workspace/http
 
 go 1.24
 
 require (
-	github.com/go-chi/chi/v5 v5.2.1
-	github.com/olezhek28/microservices-course-examples/week_1/workspace/shared v0.0.0-00010101000000-000000000000
+	github.com/alexis871aa/microservices-course-examples/week_1/workspace/shared v0.0.0-20250704154136-2ec32e31a857
+	github.com/go-chi/chi/v5 v5.2.2
 )
 
 require (
@@ -14,25 +14,25 @@ require (
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/go-faster/jx v1.1.0 // indirect
 	github.com/go-faster/yaml v0.4.6 // indirect
-	github.com/go-logr/logr v1.4.2 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/ogen-go/ogen v1.12.0 // indirect
+	github.com/ogen-go/ogen v1.14.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
-	go.opentelemetry.io/otel v1.35.0 // indirect
-	go.opentelemetry.io/otel/metric v1.35.0 // indirect
-	go.opentelemetry.io/otel/trace v1.35.0 // indirect
+	go.opentelemetry.io/otel v1.37.0 // indirect
+	go.opentelemetry.io/otel/metric v1.37.0 // indirect
+	go.opentelemetry.io/otel/trace v1.37.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090 // indirect
-	golang.org/x/net v0.39.0 // indirect
-	golang.org/x/sync v0.13.0 // indirect
-	golang.org/x/sys v0.32.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
+	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
+	golang.org/x/net v0.41.0 // indirect
+	golang.org/x/sync v0.15.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/text v0.26.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-replace github.com/olezhek28/microservices-course-examples/week_1/workspace/shared => ../shared
+replace github.com/alexis871aa/microservices-course-examples/week_1/workspace/shared => ../shared

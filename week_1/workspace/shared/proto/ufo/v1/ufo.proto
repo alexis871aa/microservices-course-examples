@@ -7,7 +7,7 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 import "google/protobuf/empty.proto";
 
-option go_package = "github.com/olezhek28/microservices-course-examples/week_1/workspace/grpc/pkg/proto/ufo/v1;ufo_v1";
+option go_package = "github.com/alexis871aa/microservices-course-examples/week_1/workspace/grpc/pkg/proto/ufo/v1;ufo_v1";
 
 // UFOService предоставляет API для работы с наблюдениями НЛО
 service UFOService {

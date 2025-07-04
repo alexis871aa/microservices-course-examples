@@ -15,7 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	weatherV1 "github.com/olezhek28/microservices-course-examples/week_1/workspace/shared/pkg/openapi/weather/v1"
+	weatherV1 "github.com/alexis871aa/microservices-course-examples/week_1/workspace/shared/pkg/openapi/weather/v1"
 )
 
 const (

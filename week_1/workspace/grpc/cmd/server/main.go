@@ -19,7 +19,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	ufoV1 "github.com/olezhek28/microservices-course-examples/week_1/workspace/shared/pkg/proto/ufo/v1"
+	ufoV1 "github.com/alexis871aa/microservices-course-examples/week_1/workspace/shared/pkg/proto/ufo/v1"
 )
 
 const grpcPort = 50051
