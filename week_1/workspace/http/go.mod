@@ -3,7 +3,7 @@ module github.com/alexis871aa/microservices-course-examples/week_1/workspace/htt
 go 1.24
 
 require (
-	github.com/alexis871aa/microservices-course-examples/week_1/workspace/shared v0.0.0-20250704154136-2ec32e31a857
+	github.com/alexis871aa/microservices-course-examples/week_1/workspace/shared v0.0.0-20250705204647-7c41f1c9bce0
 	github.com/go-chi/chi/v5 v5.2.2
 )
 
