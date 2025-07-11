@@ -17,8 +17,6 @@ vars:
   YQ: '{{.BIN_DIR}}/yq'
 
   OPEN_API_WEATHER_V1_BASE: '{{.ROOT_DIR}}/api/weather/v1/weather.openapi.yaml'
-  OPEN_API_WEATHER_V1_BUNDLE: '{{.ROOT_DIR}}/api/bundles/weather.openapi.v1.bundle.yaml'
-  OPEN_API_FILES: '{{.ROOT_DIR}}/api/bundles'
 
 tasks:
   install-formatters:
