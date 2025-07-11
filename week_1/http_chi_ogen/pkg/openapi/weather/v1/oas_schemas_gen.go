@@ -11,7 +11,7 @@ func (s *GenericErrorStatusCode) Error() string {
 	return fmt.Sprintf("code %d: %+v", s.StatusCode, s.Response)
 }
 
-// Ref: #/components/schemas/bad_request_error
+// Ref: #
 type BadRequestError struct {
 	// HTTP-код ошибки.
 	Code int `json:"code"`
@@ -42,7 +42,7 @@ func (s *BadRequestError) SetMessage(val string) {
 func (*BadRequestError) getWeatherByCityRes()    {}
 func (*BadRequestError) updateWeatherByCityRes() {}
 
-// Ref: #/components/schemas/generic_error
+// Ref: #
 type GenericError struct {
 	// HTTP-код ошибки.
 	Code OptInt `json:"code"`
@@ -96,7 +96,7 @@ func (s *GenericErrorStatusCode) SetResponse(val GenericError) {
 	s.Response = val
 }
 
-// Ref: #/components/schemas/internal_server_error
+// Ref: #
 type InternalServerError struct {
 	// HTTP-код ошибки.
 	Code int `json:"code"`
@@ -127,7 +127,7 @@ func (s *InternalServerError) SetMessage(val string) {
 func (*InternalServerError) getWeatherByCityRes()    {}
 func (*InternalServerError) updateWeatherByCityRes() {}
 
-// Ref: #/components/schemas/not_found_error
+// Ref: #
 type NotFoundError struct {
 	// HTTP-код ошибки.
 	Code int `json:"code"`
@@ -249,7 +249,7 @@ func (o OptString) Or(d string) string {
 	return d
 }
 
-// Ref: #/components/schemas/update_weather_request
+// Ref: #
 type UpdateWeatherRequest struct {
 	// Температура в градусах Цельсия.
 	Temperature float32 `json:"temperature"`
@@ -265,7 +265,7 @@ func (s *UpdateWeatherRequest) SetTemperature(val float32) {
 	s.Temperature = val
 }
 
-// Ref: #/components/schemas/weather
+// Ref: #
 type Weather struct {
 	// Название города.
 	City string `json:"city"`
