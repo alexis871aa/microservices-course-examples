@@ -11,6 +11,7 @@ func NewWeatherCenter() *WeatherCenter {
 }
 
 func (w *WeatherCenter) SetTemperature(city string, temperature float32) {
+	w.temperatureByCity[city] = temperature
 }
 
 func (w *WeatherCenter) GetTemperature(city string) (float32, error) {
