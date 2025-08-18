@@ -26,11 +26,12 @@ var (
 )
 
 func TestIntegration(t *testing.T) {
-	RegisterFailHandler(Fail)
+	RegisterFailHandler(Fail) // хендлер, который будет выполняться, когда что-то зафейлится
 	RunSpecs(t, "UFO Service Integration Test Suite")
 }
 
 var _ = BeforeSuite(func() {
+	// иницируем логгер
 	err := logger.Init(loggerLevelValue, true)
 	if err != nil {
 		panic(fmt.Sprintf("не удалось инициализировать логгер: %v", err))
