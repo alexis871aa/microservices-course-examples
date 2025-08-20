@@ -43,10 +43,14 @@ func main() {
 
 func newSyncProducer(brokerList []string) (sarama.SyncProducer, error) {
 	config := sarama.NewConfig()
+	// конфигурируем поведение продюсера, чтобы во все синхронные реплики распихивать данные, в возвратом инфомации об успешной операции записи в кафку
 	config.Producer.RequiredAcks = sarama.WaitForAll
+	// конфиг повтора запроса (есть варианты способ повтора либо с равными промежутками времени, либо рандомно и другие)
 	config.Producer.Retry.Max = 5
+	//
 	config.Producer.Return.Successes = true
 
+	// отличие Async и Sync продюсера в том, что синхр продюсер будет ждать когда данные запишутся
 	producer, err := sarama.NewSyncProducer(brokerList, config)
 	if err != nil {
 		return nil, err
