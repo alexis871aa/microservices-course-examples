@@ -49,7 +49,8 @@ func main() {
 	fmt.Println("  - alice:alice456")
 
 	// Запускаем сервер
-	if err := grpcServer.Serve(listener); err != nil {
+	err = grpcServer.Serve(listener)
+	if err != nil {
 		log.Printf("Failed to serve gRPC server: %v\n", err)
 	}
 }

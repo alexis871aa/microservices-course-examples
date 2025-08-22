@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/olezhek28/microservices-course-examples/week_8/grpc_with_iam/shared/pkg/proto/common/v1;common_v1";
+
+import "google/protobuf/timestamp.proto";
+
+// Информация о сессии пользователя
+message Session {
+  string uuid = 1; // Уникальный идентификатор сессии
+  google.protobuf.Timestamp created_at = 2; // Дата и время создания сессии
+  google.protobuf.Timestamp updated_at = 3; // Дата и время последнего обновления сессии
+  google.protobuf.Timestamp expires_at = 4; // Дата и время истечения сессии
+}
+
+// Методы уведомления
+enum NotificationMethod {
+  NOTIFICATION_METHOD_UNSPECIFIED = 0;
+  NOTIFICATION_METHOD_EMAIL = 1;
+  NOTIFICATION_METHOD_SMS = 2;
+  NOTIFICATION_METHOD_PUSH = 3;
+}
+
+// Базовая информация о пользователе
+message UserInfo {
+  string login = 1; // Логин пользователя
+  string email = 2; // Email пользователя
+  repeated NotificationMethod notification_methods = 3; // Методы уведомления
+}
+
+// Полная информация о пользователе
+message User {
+  string uuid = 1; // Уникальный идентификатор пользователя
+  UserInfo info = 2; // Основная информация (логин, email и т.д.)
+  google.protobuf.Timestamp created_at = 3; // Дата создания пользователя
+  google.protobuf.Timestamp updated_at = 4; // Дата последнего обновления пользователя
+}

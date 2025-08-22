@@ -1,0 +1,58 @@
+services:
+  weather-api:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    # Собираем weather API из локального Dockerfile
+
+    container_name: weather-api
+    # Явное имя контейнера — удобно для логов и отладки
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/weather/healthcheck"]
+      # Проверяем готовность API через health endpoint
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+      # Даём приложению время на запуск
+
+    restart: unless-stopped
+
+  envoy:
+    image: envoyproxy/envoy:v1.34.0
+    # Используем свежую стабильную версию Envoy Proxy — 1.34.0, поддерживающую все необходимые функции
+
+    container_name: envoy
+    # Явное имя контейнера — удобно использовать в логах и CLI
+
+    depends_on:
+      weather-api:
+        condition: service_healthy
+    # Запускаем Envoy только после успешного старта weather-api
+
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml
+      # Примонтируем локальный конфигурационный файл Envoy в контейнер
+
+    ports:
+      - "${ENVOY_PORT}:8080"
+      # Пробрасываем порт 8080 на хост-машину — через него Envoy будет принимать HTTP-запросы от клиента
+
+      - "${ENVOY_ADMIN_PORT}:8081"
+      # Пробрасываем административный порт Envoy — через него можно следить за состоянием и метриками (например, /ready)
+
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/8081'"]
+      # Проверяем, готов ли Envoy к обслуживанию — проверяем доступность порта 8081
+      interval: 10s
+      # Проверку выполняем каждые 10 секунд
+      timeout: 5s
+      # Ожидаем максимум 5 секунд на ответ
+      retries: 5
+      # После 5 неудачных попыток подряд контейнер считается unhealthy
+      start_period: 10s
+      # Даём Envoy 10 секунд на запуск перед первой проверкой
+
+    restart: unless-stopped
+    # Автоматически перезапускаем контейнер при сбоях, но не перезапускаем при ручной остановке

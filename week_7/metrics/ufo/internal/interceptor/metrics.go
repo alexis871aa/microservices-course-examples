@@ -2,8 +2,11 @@ package interceptor
 
 import (
 	"context"
+	"log"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -14,10 +17,6 @@ import (
 // MetricsInterceptor создает gRPC интерцептор для записи метрик
 func MetricsInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		// Увеличиваем счетчик активных соединений
-		ufoMetrics.ActiveConnections.Inc()
-		defer ufoMetrics.ActiveConnections.Dec()
-
 		// Засекаем время начала запроса
 		start := time.Now()
 
@@ -26,7 +25,15 @@ func MetricsInterceptor() grpc.UnaryServerInterceptor {
 
 		// Записываем время выполнения
 		duration := time.Since(start)
-		ufoMetrics.RequestDuration.WithLabelValues(info.FullMethod).Observe(duration.Seconds())
+		durationSeconds := duration.Seconds()
+
+		log.Printf("🕐 Request duration: %v (%f seconds) for method: %s", duration, durationSeconds, info.FullMethod)
+
+		ufoMetrics.RequestDuration.Record(ctx, durationSeconds,
+			metric.WithAttributes(
+				attribute.String("method", info.FullMethod),
+			),
+		)
 
 		// Определяем статус ответа
 		statusCode := codes.OK
@@ -43,7 +50,12 @@ func MetricsInterceptor() grpc.UnaryServerInterceptor {
 		if statusCode != codes.OK {
 			statusLabel = "error"
 		}
-		ufoMetrics.RequestsTotal.WithLabelValues(info.FullMethod, statusLabel).Inc()
+		ufoMetrics.RequestsTotal.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("method", info.FullMethod),
+				attribute.String("status", statusLabel),
+			),
+		)
 
 		return resp, err
 	}

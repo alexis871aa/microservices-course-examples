@@ -4,6 +4,9 @@ import (
 	"context"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/olezhek28/microservices-course-examples/week_7/tracing/platform/pkg/tracing"
 )
 
@@ -18,7 +21,13 @@ func NewClassificationService() *ClassificationService {
 // ClassifyObject классифицирует объект на основе описания, цвета и длительности
 func (s *ClassificationService) ClassifyObject(ctx context.Context, description, color string, durationSeconds int32) (string, float32, string, error) {
 	// Создаем спан для внутренней логики
-	ctx, span := tracing.StartSpan(ctx, "classification.analyze")
+	ctx, span := tracing.StartSpan(ctx, "classification.analyze",
+		trace.WithAttributes(
+			attribute.String("sighting.description", description),
+			attribute.String("sighting.color", color),
+			attribute.Int("sighting.duration_seconds", int(durationSeconds)),
+		),
+	)
 	defer span.End()
 
 	// Простая логика классификации
@@ -73,6 +82,13 @@ func (s *ClassificationService) ClassifyObject(ctx context.Context, description,
 	if confidence < 0.0 {
 		confidence = 0.0
 	}
+
+	// Добавляем атрибуты результата классификации
+	span.SetAttributes(
+		attribute.String("analysis.classification", objectType),
+		attribute.Float64("analysis.confidence", float64(confidence)),
+		attribute.String("analysis.explanation", explanation),
+	)
 
 	return objectType, confidence, explanation, nil
 }

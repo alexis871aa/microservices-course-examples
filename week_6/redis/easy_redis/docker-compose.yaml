@@ -25,11 +25,6 @@ services:
       - microservices-net
       # Redis подключается к той же общей сети, что и PostgreSQL, и остальные сервисы
 
-volumes: # Раздел томов — Docker сам создаст и будет управлять этим хранилищем данных
-  postgres_iam_data:
-  # Том для хранения данных PostgreSQL (таблицы, индексы и т.д.)
-  # Он сохраняется между перезапусками контейнера
-
 networks: # Определение используемой сети
   microservices-net:
     external: true

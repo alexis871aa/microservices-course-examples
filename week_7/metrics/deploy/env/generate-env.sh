@@ -130,6 +130,7 @@ process_monitoring() {
     "$COMPOSE_DIR/core/otel/otel-collector-config.template.yaml:$COMPOSE_DIR/core/otel/otel-collector-config.yaml"
     "$COMPOSE_DIR/core/prometheus/prometheus.template.yml:$COMPOSE_DIR/core/prometheus/prometheus.yml"
     "$COMPOSE_DIR/core/grafana/provisioning/datasources/prometheus.template.yml:$COMPOSE_DIR/core/grafana/provisioning/datasources/prometheus.yml"
+    "$COMPOSE_DIR/core/grafana/provisioning/dashboards/dashboards.template.yml:$COMPOSE_DIR/core/grafana/provisioning/dashboards/dashboards.yml"
   )
 
   success_count=0

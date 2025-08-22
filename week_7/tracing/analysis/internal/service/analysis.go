@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -48,20 +50,37 @@ func NewAnalysisService() (*AnalysisService, error) {
 
 // AnalyzeSighting анализирует наблюдение НЛО
 func (s *AnalysisService) AnalyzeSighting(ctx context.Context, uuid string) (string, string, float32, error) {
-	// Создаем спан для получения данных о наблюдении
-	ctx, span := tracing.StartSpan(ctx, "analysis.get_sighting")
+	// Спан для получения данных о наблюдении
+	ctx, getSightingSpan := tracing.StartSpan(ctx, "ufo.get_sighting",
+		trace.WithAttributes(
+			attribute.String("ufo.uuid", uuid),
+		),
+	)
 
 	// Получаем данные о наблюдении из UFO сервиса
 	sighting, err := s.ufoClient.Get(ctx, &ufoV1.GetRequest{Uuid: uuid})
 	if err != nil {
-		span.End()
+		getSightingSpan.RecordError(err)
+		getSightingSpan.End()
 		return "", "", 0, fmt.Errorf("failed to get sighting: %w", err)
 	}
-	span.End()
 
-	// Создаем спан для классификации
-	ctx, span = tracing.StartSpan(ctx, "analysis.classify")
-	defer span.End()
+	// Добавляем атрибуты после получения данных
+	getSightingSpan.SetAttributes(
+		attribute.String("sighting.description", sighting.Sighting.Info.Description),
+		attribute.String("sighting.color", sighting.Sighting.Info.Color.GetValue()),
+		attribute.Int("sighting.duration_seconds", int(sighting.Sighting.Info.DurationSeconds.GetValue())),
+	)
+	getSightingSpan.End()
+
+	// Спан для классификации
+	ctx, classifySpan := tracing.StartSpan(ctx, "analysis.classify",
+		trace.WithAttributes(
+			attribute.String("ufo.uuid", uuid),
+			attribute.String("sighting.description", sighting.Sighting.Info.Description),
+		),
+	)
+	defer classifySpan.End()
 
 	// Отправляем данные в Classification сервис
 	classification, err := s.classificationClient.ClassifyObject(ctx, &classificationV1.ClassifyObjectRequest{
@@ -70,8 +89,16 @@ func (s *AnalysisService) AnalyzeSighting(ctx context.Context, uuid string) (str
 		DurationSeconds: sighting.Sighting.Info.DurationSeconds.GetValue(),
 	})
 	if err != nil {
+		classifySpan.RecordError(err)
 		return "", "", 0, fmt.Errorf("failed to classify object: %w", err)
 	}
+
+	// Добавляем атрибуты результата классификации
+	classifySpan.SetAttributes(
+		attribute.String("analysis.classification", classification.ObjectType),
+		attribute.Float64("analysis.confidence", float64(classification.Confidence)),
+		attribute.String("analysis.explanation", classification.Explanation),
+	)
 
 	// Формируем результат анализа
 	analysisResult := fmt.Sprintf(

@@ -9,7 +9,7 @@ import (
 func (s *service) Get(ctx context.Context, uuid string) (model.Sighting, error) {
 	// Сначала пытаемся получить из кеша
 	sighting, err := s.cacheRepository.Get(ctx, uuid)
-	if err == nil {
+	if nil == err {
 		return sighting, nil
 	}
 

@@ -1,0 +1,11 @@
+version: v2
+lint:
+  use:
+    - STANDARD
+  except:
+      - RPC_RESPONSE_STANDARD_NAME
+      - RPC_REQUEST_RESPONSE_UNIQUE
+      - COMMENT_ENUM
+      - COMMENT_MESSAGE
+      - PACKAGE_VERSION_SUFFIX
+      - SERVICE_SUFFIX

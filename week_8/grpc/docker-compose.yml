@@ -1,0 +1,57 @@
+services:
+  ufo-grpc-server:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    # Собираем UFO gRPC сервер из локального Dockerfile
+
+    container_name: ufo-grpc-server
+    # Явное имя контейнера — удобно для логов и отладки
+
+    healthcheck:
+      test: ["CMD", "grpc-health-probe", "-addr=localhost:50051"]
+      # Проверяем готовность gRPC сервера через health checking protocol
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+      # Даём gRPC серверу время на запуск
+
+    restart: unless-stopped
+
+  envoy:
+    image: envoyproxy/envoy:v1.34.0
+    # Используем свежую стабильную версию Envoy Proxy с поддержкой gRPC JSON transcoding
+
+    container_name: envoy
+    # Явное имя контейнера — удобно использовать в логах и CLI
+
+    depends_on:
+      ufo-grpc-server:
+        condition: service_healthy
+    # Запускаем Envoy только после успешного старта ufo-grpc-server
+
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml
+      # Примонтируем локальную конфигурацию Envoy в контейнер
+      
+      - ./pkg/proto/ufo/v1/ufo_descriptor.pb:/etc/envoy/ufo_descriptor.pb
+      # Примонтируем сгенерированный proto дескриптор для HTTP-to-gRPC transcoding
+
+    ports:
+      - "${ENVOY_PORT}:8080"
+      # Пробрасываем порт 8080 на хост-машину — через него Envoy принимает HTTP-запросы
+
+      - "${ENVOY_ADMIN_PORT}:8081"
+      # Пробрасываем административный порт Envoy — метрики, health checks, конфигурация
+
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/8081'"]
+      # Проверяем, готов ли Envoy к обслуживанию — проверяем доступность админ порта
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+      # Даём Envoy время на запуск
+
+    restart: unless-stopped

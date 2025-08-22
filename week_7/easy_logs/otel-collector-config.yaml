@@ -1,0 +1,230 @@
+# ===================================================================
+# OPENTELEMETRY COLLECTOR КОНФИГУРАЦИЯ ДЛЯ СБОРА ЛОГОВ
+# ===================================================================
+# 
+# Эта конфигурация определяет, как OpenTelemetry Collector принимает,
+# обрабатывает и отправляет логи от Go приложений в Elasticsearch.
+#
+# АРХИТЕКТУРА PIPELINE:
+# Go App → OTLP Receiver → Resource Processor → Batch Processor → Elasticsearch Exporter
+#
+# Основные концепции:
+# - Receivers: принимают данные от приложений
+# - Processors: обрабатывают и обогащают данные
+# - Exporters: отправляют данные в системы хранения
+# - Pipelines: связывают receivers → processors → exporters
+
+# ===================================================================
+# RECEIVERS - ПРИЕМНИКИ ТЕЛЕМЕТРИЧЕСКИХ ДАННЫХ
+# ===================================================================
+# 
+# Receivers определяют, как коллектор принимает данные от приложений.
+# Каждый receiver слушает на определенном протоколе и порту.
+
+receivers:
+  # OTLP (OpenTelemetry Protocol) Receiver
+  # Это стандартный протокол OpenTelemetry для передачи логов, метрик и трасс
+  otlp:
+    protocols:
+      # gRPC протокол для высокопроизводительной передачи данных
+      # Более эффективен чем HTTP для больших объемов данных
+      grpc:
+        # ENDPOINT: слушаем на всех интерфейсах (0.0.0.0) порту 4317
+        # Go приложение подключается к localhost:4317
+        # Стандартный порт для OTLP gRPC согласно спецификации
+        endpoint: 0.0.0.0:4317
+
+        # ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ (можно добавить):
+        # max_recv_msg_size: 4194304  # максимальный размер сообщения (4MB)
+        # keepalive:
+        #   server_parameters:
+        #     time: 30s                # keepalive пинг каждые 30 сек
+        #     timeout: 5s              # таймаут ответа на пинг
+
+# ===================================================================
+# PROCESSORS - ОБРАБОТЧИКИ ТЕЛЕМЕТРИЧЕСКИХ ДАННЫХ
+# ===================================================================
+# 
+# Processors модифицируют данные между приемом и отправкой.
+# Они выполняются в том порядке, как указаны в pipeline.
+
+processors:
+  
+  # RESOURCE PROCESSOR - обогащение метаданными на уровне ресурса
+  # Добавляет информацию о сервисе ко всем логам
+  resource:
+    attributes:
+      # НЕ переопределяем service.name в коллекторе, чтобы поддерживать несколько сервисов
+      # Каждый сервис должен задавать service.name на стороне приложения
+
+      # DEPLOYMENT ENVIRONMENT: окружение развертывания
+      # Помогает различать логи из dev/staging/production
+      - key: deployment.environment  
+        value: dev
+        action: insert  # добавляем только если атрибут не задан приложением
+        
+      # ДОПОЛНИТЕЛЬНЫЕ АТРИБУТЫ (примеры):
+      # - key: service.version
+      #   value: "1.0.0" 
+      #   action: upsert
+      # - key: service.instance.id
+      #   from_attribute: host.name  # копировать значение из другого атрибута
+      #   action: insert
+  
+  # BATCH PROCESSOR - группировка данных для эффективной отправки
+  # Собирает логи в батчи перед отправкой в Elasticsearch
+  batch:
+    # РАЗМЕР БАТЧА: отправляем, когда накопится 1000 записей
+    # Большие батчи = выше throughput, но больше latency
+    send_batch_size: 1000
+    
+    # ТАЙМАУТ: отправляем принудительно через 5 секунд
+    # Гарантирует, что логи не застрянут надолго в буфере
+    timeout: 5s
+
+# ===================================================================
+# EXPORTERS - ЭКСПОРТЕРЫ ДАННЫХ В СИСТЕМЫ ХРАНЕНИЯ
+# ===================================================================
+# 
+# Exporters отправляют обработанные данные во внешние системы.
+
+exporters:
+  
+  # ELASTICSEARCH EXPORTER - отправка логов в Elasticsearch
+  elasticsearch:
+    
+    # ENDPOINTS: список адресов Elasticsearch кластера
+    # В production обычно несколько узлов для отказоустойчивости
+    endpoints: ["http://elasticsearch:9200"]
+    
+    # TLS НАСТРОЙКИ: конфигурация безопасного соединения
+    tls:
+      # INSECURE: отключаем проверку сертификатов для локальной разработки
+      # В production ОБЯЗАТЕЛЬНО включить проверку сертификатов
+      insecure: true
+      
+      # ДОПОЛНИТЕЛЬНЫЕ TLS НАСТРОЙКИ (для production):
+      # cert_file: "/path/to/cert.pem"     # путь к сертификату клиента
+      # key_file: "/path/to/key.pem"       # путь к приватному ключу
+      # ca_file: "/path/to/ca.pem"         # путь к CA сертификату
+    
+    # LOGS INDEX: имя индекса для хранения логов в Elasticsearch
+    # Все логи будут сохраняться в индекс "easy-logs"
+    # Можно использовать шаблоны: "logs-%{+yyyy.MM.dd}" для создания daily индексов
+    logs_index: "easy-logs"
+    
+    # MAPPING: настройки индексации данных
+    mapping:
+      # ECS MODE: использовать Elastic Common Schema
+      # Стандартизирует структуру полей логов для лучшей совместимости
+      mode: ecs
+      
+      # ECS обеспечивает:
+      # - @timestamp: временная метка лога
+      # - message: текст сообщения  
+      # - event.severity: уровень логирования
+      # - service.name: имя сервиса
+      # - и другие стандартизированные поля
+    
+    # ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ (можно добавить):
+    # retry:
+    #   enabled: true               # включить повторные попытки
+    #   max_requests: 5             # максимум попыток
+    #   initial_interval: 100ms     # начальная задержка
+    # timeout: 90s                  # таймаут HTTP запроса
+    # compression: gzip             # сжатие данных
+
+# ===================================================================
+# EXTENSIONS - ДОПОЛНИТЕЛЬНЫЕ КОМПОНЕНТЫ
+# ===================================================================
+# 
+# Extensions предоставляют дополнительную функциональность коллектора.
+
+extensions:
+  
+  # HEALTH CHECK: эндпоинт для проверки здоровья коллектора
+  # Полезно для мониторинга в Kubernetes/Docker
+  health_check:
+    # ENDPOINT: адрес для health check запросов
+    endpoint: 0.0.0.0:13133
+    
+    # Доступные эндпоинты:
+    # - GET /health/status - общий статус
+    # - GET /health/ready  - готовность к работе
+
+# ===================================================================
+# SERVICE - КОНФИГУРАЦИЯ СЕРВИСА КОЛЛЕКТОРА
+# ===================================================================
+# 
+# Service определяет, как работает сам коллектор.
+
+service:
+  
+  # TELEMETRY: собственная телеметрия коллектора
+  telemetry:
+    metrics:
+      # АДРЕС МЕТРИК: эндпоинт для собственных метрик коллектора
+      # Метрики в формате Prometheus доступны на localhost:8888/metrics
+      address: 0.0.0.0:8888
+      
+      # Примеры метрик коллектора:
+      # - otelcol_receiver_accepted_log_records_total: принятые логи
+      # - otelcol_exporter_sent_log_records_total: отправленные логи  
+      # - otelcol_processor_batch_batch_send_size: размеры батчей
+  
+  # EXTENSIONS: включаем дополнительные компоненты
+  extensions: [health_check]
+  
+  # PIPELINES: определяем потоки обработки данных
+  pipelines:
+    
+    # LOGS PIPELINE: обработка логов
+    logs:
+      # ПОСЛЕДОВАТЕЛЬНОСТЬ ОБРАБОТКИ: receivers → processors → exporters
+      
+      receivers: [otlp]                    # принимаем от OTLP gRPC
+      processors: [resource, batch]       # обогащаем метаданными, группируем в батчи  
+      exporters: [elasticsearch]          # отправляем в Elasticsearch
+      
+      # FLOW ДИАГРАММА:
+      # Go App (OTLP gRPC) 
+      #       ↓
+      # OTLP Receiver (port 4317)
+      #       ↓  
+      # Resource Processor (add service.name, deployment.environment)
+      #       ↓
+      # Batch Processor (group 1000 records, max 5s)  
+      #       ↓
+      # Elasticsearch Exporter (send to easy-logs index)
+
+# ===================================================================
+# ДОПОЛНИТЕЛЬНЫЕ ВОЗМОЖНОСТИ КОНФИГУРАЦИИ
+# ===================================================================
+#
+# Примеры расширенной конфигурации для production:
+#
+# processors:
+#   memory_limiter:                # ограничение памяти
+#     limit_percentage: 80
+#     spike_limit_percentage: 25
+#   
+#   attributes:                    # манипуляции с атрибутами
+#     actions:
+#       - key: environment
+#         value: production
+#         action: upsert
+#       - key: sensitive_field
+#         action: delete           # удалить чувствительные данные
+#
+# exporters:
+#   jaeger:                        # дополнительный экспортер трасс  
+#     endpoint: jaeger:14250
+#     tls:
+#       insecure: true
+#
+# service:
+#   pipelines:
+#     traces:                      # pipeline для трасс
+#       receivers: [otlp]
+#       processors: [memory_limiter, resource, batch]
+#       exporters: [jaeger]

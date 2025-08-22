@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package iam.v1;
+
+option go_package = "github.com/olezhek28/microservices-course-examples/week_8/grpc_with_iam/shared/pkg/proto/iam/v1;iam_v1";
+
+import "google/api/annotations.proto";
+import "common/v1/common.proto";
+
+// IAM сервис с двумя интерфейсами: основной API и External Authorization
+service IAMService {
+  // Основной API для внешних клиентов
+  rpc Whoami(WhoamiRequest) returns (WhoamiResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/whoami"
+      body: "*"
+    };
+  }
+}
+
+// Запрос Whoami
+message WhoamiRequest {
+  string session_uuid = 1; // UUID активной сессии
+}
+
+// Ответ Whoami
+message WhoamiResponse {
+  common.v1.Session session = 1; // Информация о текущей сессии
+  common.v1.User user = 2; // Информация о пользователе, которому принадлежит сессия
+}

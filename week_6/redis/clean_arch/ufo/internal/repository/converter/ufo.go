@@ -1,7 +1,6 @@
 package converter
 
 import (
-	"context"
 	"time"
 
 	"github.com/samber/lo"
@@ -43,7 +42,7 @@ func SightingInfoToModel(info repoModel.SightingInfo) model.SightingInfo {
 }
 
 // SightingToRedisView - конвертер из модели домена в Redis view
-func SightingToRedisView(ctx context.Context, sighting model.Sighting) repoModel.SightingRedisView {
+func SightingToRedisView(sighting model.Sighting) repoModel.SightingRedisView {
 	var observedAt *int64
 	if sighting.Info.ObservedAt != nil {
 		observedAt = lo.ToPtr(sighting.Info.ObservedAt.UnixNano())
@@ -74,7 +73,7 @@ func SightingToRedisView(ctx context.Context, sighting model.Sighting) repoModel
 }
 
 // SightingFromRedisView - конвертер из Redis view в модель домена
-func SightingFromRedisView(ctx context.Context, redisView repoModel.SightingRedisView) model.Sighting {
+func SightingFromRedisView(redisView repoModel.SightingRedisView) model.Sighting {
 	var observedAt *time.Time
 	if redisView.ObservedAtNs != nil {
 		tmp := time.Unix(0, *redisView.ObservedAtNs)

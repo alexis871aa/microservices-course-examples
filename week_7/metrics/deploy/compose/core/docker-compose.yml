@@ -8,9 +8,7 @@ services: # Раздел, в котором описываются все кон
       - ./otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml # Монтируем конфигурацию коллектора
     ports:
       - "${OTEL_GRPC_PORT}:4317" # Порт для протокола OTLP gRPC
-      - "${OTEL_HTTP_PORT}:4318" # Порт для протокола OTLP HTTP
-      - "8888:8888" # Порт для метрик самого коллектора
-      - "8889:8889" # Порт для расширения zpages (дебаг)
+      - "${OTEL_METRICS_PORT}:8888" # Prometheus метрики для мониторинга и healthcheck
     restart: unless-stopped
     # Автоматически перезапускаем контейнер при сбоях, но не при ручной остановке
     networks:
@@ -37,14 +35,12 @@ services: # Раздел, в котором описываются все кон
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml # Монтируем конфигурацию Prometheus
       - prometheus_data:/prometheus # Подключаем volume для хранения данных Prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml' # Указываем путь к файлу конфигурации внутри контейнера
-      - '--storage.tsdb.path=/prometheus' # Директория для хранения временных рядов (метрик) в персистентном томе
-      - '--web.console.libraries=/etc/prometheus/console_libraries' # Путь к JavaScript библиотекам для веб-интерфейса
-      - '--web.console.templates=/etc/prometheus/consoles' # Путь к шаблонам консоли для веб-интерфейса
-      - '--web.enable-lifecycle' # Включает HTTP API для управления Prometheus (позволяет перезагружать конфигурацию без рестарта через POST запрос на /-/reload)
-      - '--web.enable-remote-write-receiver' # Включает поддержку remote write API для приема метрик от OpenTelemetry Collector
+      - '--config.file=/etc/prometheus/prometheus.yml' # Указываем путь к файлу конфигурации
+      - '--storage.tsdb.path=/prometheus' # Директория для хранения временных рядов
+      - '--web.enable-lifecycle' # Включает HTTP API для управления Prometheus
+      - '--web.enable-remote-write-receiver' # Включает поддержку remote write API для приема метрик
     healthcheck:
-      test: [ "CMD", "wget", "--quiet", "--spider", "http://localhost:${PROMETHEUS_PORT}/-/healthy" ]
+      test: [ "CMD", "wget", "--quiet", "--spider", "http://localhost:9090/-/healthy" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -65,8 +61,6 @@ services: # Раздел, в котором описываются все кон
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin} # Имя пользователя администратора
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin} # Пароль администратора
       - GF_USERS_ALLOW_SIGN_UP=false # Запрещаем регистрацию новых пользователей
-      - GF_AUTH_ANONYMOUS_ENABLED=true # Разрешаем анонимный доступ для удобства разработки
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer # Роль для анонимных пользователей - только просмотр
     volumes:
       - grafana_data:/var/lib/grafana # Подключаем volume для хранения данных Grafana
       - ./grafana/provisioning:/etc/grafana/provisioning # Монтируем директорию с настройками для автоматического провижининга
@@ -76,7 +70,7 @@ services: # Раздел, в котором описываются все кон
         condition: service_healthy
       # Гарантируем, что Grafana стартует только после того, как Prometheus станет healthy
     healthcheck:
-      test: [ "CMD", "wget", "--quiet", "--spider", "http://localhost:${GRAFANA_PORT}/api/health" ]
+      test: [ "CMD", "wget", "--quiet", "--spider", "http://localhost:3000/api/health" ]
       interval: 10s
       timeout: 5s
       retries: 10

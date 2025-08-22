@@ -1,0 +1,199 @@
+# ===============================
+# БАЗОВАЯ КОНФИГУРАЦИЯ ENVOY PROXY
+# ===============================
+
+# Административная настройка — конфигурация административного интерфейса
+admin:
+  address:
+    socket_address:
+      # IP адрес для административного интерфейса (0.0.0.0 = все интерфейсы)
+      address: 0.0.0.0
+      # Порт административного интерфейса (доступен по /ready, /stats, /config_dump)
+      port_value: 8081
+
+# ===============================
+# LISTENERS (Слушатели входящих соединений)
+# ===============================
+# Listeners определяют как Envoy принимает входящий трафик
+# Можно настроить несколько listeners на разных портах для разных протоколов
+
+static_resources:
+  listeners:
+  - name: weather_api_listener
+    # Имя listener'а — используется в логах и метриках для идентификации
+
+    address:
+      socket_address:
+        # IP адрес, на котором слушаем входящие соединения
+        # 0.0.0.0 означает "слушать на всех доступных сетевых интерфейсах"
+        address: 0.0.0.0
+        # Порт, на котором принимаем HTTP-трафик от клиентов
+        port_value: 8080
+
+    # Фильтры обработки соединений — определяют как обрабатывать входящий трафик
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        # HTTP Connection Manager — основной фильтр для обработки HTTP-трафика
+        # Этот фильтр парсит HTTP-запросы, применяет маршрутизацию, добавляет заголовки
+
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          
+          # Имя схемы маршрутизации (используется в метриках)
+          stat_prefix: weather_api
+          
+          # ===============================
+          # КОНФИГУРАЦИЯ МАРШРУТИЗАЦИИ
+          # ===============================
+
+          route_config:
+            name: weather_routes
+            # Имя конфигурации маршрутизации
+            
+            virtual_hosts:
+            # Virtual hosts — логическое разделение трафика по доменам или путям
+            - name: weather_service
+              # Имя виртуального хоста
+
+              domains: ["*"]
+              # Домены, которые обслуживает этот virtual host
+              # "*" означает "любой домен" — подходит для локальной разработки
+
+              # ===============================
+              # ПРАВИЛА МАРШРУТИЗАЦИИ
+              # ===============================
+              routes:
+              # Здесь определяем куда направлять различные запросы
+              
+              - match:
+                  # Условие совпадения — запросы с префиксом /api/v1/weather
+                  prefix: "/api/v1/weather"
+                route:
+                  # Действие при совпадении — перенаправить на кластер weather_api_cluster
+                  cluster: weather_api_cluster
+                  
+                  # Максимальное время ожидания ответа от backend сервиса
+                  # Если backend не отвечает за 15 секунд — возвращаем 504 Gateway Timeout
+                  timeout: 15s
+                  
+              # Маршрут по умолчанию — для всех остальных запросов
+              - match:
+                  prefix: "/"
+                direct_response:
+                  # Прямой ответ без обращения к backend
+                  status: 404
+                  body:
+                    inline_string: |
+                      {
+                        "error": "Not Found",
+                        "message": "Available endpoints: /api/v1/weather/{city}",
+                        "examples": [
+                          "GET /api/v1/weather/Moscow",
+                          "PUT /api/v1/weather/Moscow",
+                          "GET /api/v1/weather/healthcheck"
+                        ]
+                      }
+
+          # ===============================
+          # HTTP ФИЛЬТРЫ
+          # ===============================
+          http_filters:
+          # HTTP фильтры применяются к каждому запросу в указанном порядке
+          
+          - name: envoy.filters.http.router
+            # Router фильтр — основной фильтр маршрутизации, ОБЯЗАТЕЛЬНО должен быть последним
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  # ===============================
+  # CLUSTERS (Кластеры backend сервисов)
+  # ===============================
+  # Clusters описывают группы backend серверов и настройки подключения к ним
+  
+  clusters:
+  - name: weather_api_cluster
+    # Имя кластера (должно совпадать с именем в маршрутах)
+    
+    # ===============================
+    # DISCOVERY TYPE
+    # ===============================
+    type: STRICT_DNS
+    # Тип обнаружения endpoints:
+    # - STRICT_DNS: использовать DNS для резолвинга хостов (подходит для Docker)
+    # - STATIC: статический список endpoints
+    # - EDS: External Discovery Service для динамического обнаружения
+    
+    # ===============================
+    # LOAD BALANCING
+    # ===============================
+    lb_policy: ROUND_ROBIN
+    # Политика балансировки нагрузки:
+    # - ROUND_ROBIN: по очереди между всеми healthy endpoints
+    # - LEAST_REQUEST: на endpoint с наименьшим количеством активных запросов
+    # - RANDOM: случайный выбор
+    
+    # ===============================
+    # HEALTH CHECKING (базовые настройки)
+    # ===============================
+
+    health_checks:
+    # Конфигурация проверок здоровья backend сервисов
+    - timeout: 3s
+      # Таймаут на проверку здоровья
+      
+      interval: 10s
+      # Интервал между проверками
+      
+      unhealthy_threshold: 3
+      # Количество неудачных проверок подряд для признания endpoint unhealthy
+      
+      healthy_threshold: 2  
+      # Количество успешных проверок подряд для признания endpoint healthy
+      
+      http_health_check:
+        # HTTP проверка здоровья
+        path: "/api/v1/weather/healthcheck"
+        # Путь для проверки здоровья на backend сервисе
+
+    # ===============================
+    # ENDPOINT CONFIGURATION
+    # ===============================
+    load_assignment:
+      cluster_name: weather_api_cluster
+      # Имя кластера (должно совпадать с именем cluster выше)
+      
+      endpoints:
+      # Список endpoints (backend серверов)
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                # Имя сервиса weather-api из docker-compose.yml
+                # Docker автоматически резолвит это имя в IP адрес контейнера
+                address: weather-api
+                port_value: 8080
+                # Порт, на котором работает weather API внутри контейнера
+
+# ===============================
+# ПОТОК ОБРАБОТКИ ЗАПРОСА:
+# ===============================
+# 1. Клиент отправляет HTTP запрос на localhost:8080
+# 2. Envoy принимает запрос через weather_api_listener
+# 3. HTTP Connection Manager парсит HTTP запрос
+# 4. Router фильтр применяет правила маршрутизации из route_config
+# 5. Если путь начинается с /api/v1/weather — перенаправляем на weather_api_cluster
+# 6. Envoy выбирает healthy endpoint из кластера (используя Round Robin)
+# 7. Отправляет запрос на weather-api:8080
+# 8. Получает ответ от weather API и передаёт его клиенту
+
+# ===============================  
+# ДЛЯ ПРОДАКШЕНА НУЖНО ДОБАВИТЬ:
+# ===============================
+# - Circuit breakers для защиты от перегрузки
+# - CORS настройки для веб-приложений
+# - TLS/SSL сертификаты для HTTPS
+# - Rate limiting для защиты от DDoS
+# - Detailed logging и tracing
+# - Retry policies для надежности
+# - Health check настройки под ваш SLA

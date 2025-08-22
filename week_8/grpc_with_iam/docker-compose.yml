@@ -1,0 +1,80 @@
+services:
+  # UFO gRPC сервер (основной бизнес-сервис)
+  ufo-grpc-server:
+    build:
+      context: .
+      dockerfile: ./ufo/Dockerfile
+    container_name: ufo-grpc-server
+    healthcheck:
+      test: ["CMD", "/bin/grpc-health-probe", "-addr=localhost:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # IAM gRPC сервер (аутентификация + External Authorization)
+  iam-grpc-server:
+    build:
+      context: .
+      dockerfile: ./iam/Dockerfile
+    container_name: iam-grpc-server
+    ports:
+      - "50052:50052" # Порт для gRPC сервиса IAM
+    healthcheck:
+      test: ["CMD", "/bin/grpc-health-probe", "-addr=localhost:50052"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # Envoy Proxy (API Gateway с аутентификацией)
+  envoy:
+    image: envoyproxy/envoy:v1.34.0
+    container_name: envoy
+    depends_on:
+      ufo-grpc-server:
+        condition: service_healthy
+      iam-grpc-server:
+        condition: service_healthy
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./shared/pkg/proto/ufo/v1/ufo_descriptor.pb:/etc/envoy/ufo_descriptor.pb:ro
+    ports:
+      - "${ENVOY_PORT:-8080}:8080"      # HTTP API с аутентификацией
+      - "${ENVOY_ADMIN_PORT:-8081}:8081" # Envoy admin interface
+    environment:
+      - ENVOY_UID=0  # Права для доступа к файлам
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/8081'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+# ===============================
+# АРХИТЕКТУРА СИСТЕМЫ:
+# ===============================
+# 1. ufo-grpc-server:50051 - UFO сервис (бизнес-логика)
+# 2. iam-grpc-server:50052 - IAM сервис (аутентификация)
+# 3. envoy:8080 - HTTP API Gateway с аутентификацией
+# 4. envoy:8081 - Admin interface для мониторинга
+
+# ===============================
+# ПОТОК ОБРАБОТКИ ЗАПРОСА:
+# ===============================
+# HTTP Client → envoy:8080 (с Session-UUID) → 
+# → ext_authz → iam-grpc-server:50052 (Check + Whoami) →
+# → transcoder → ufo-grpc-server:50051 (с заголовками x-user-*) →
+# → JSON Response → HTTP Client
+
+# ===============================
+# КОМАНДЫ ДЛЯ ЗАПУСКА:
+# ===============================
+# docker-compose up --build -d      # Запуск всех сервисов
+# docker-compose ps                 # Проверка статуса
+# docker-compose logs -f envoy      # Логи Envoy
+# docker-compose logs -f iam-grpc-server  # Логи IAM
+# docker-compose down               # Остановка всех сервисов

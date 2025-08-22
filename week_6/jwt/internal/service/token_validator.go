@@ -25,7 +25,8 @@ func (s *JWTService) validateRefreshToken(tokenString string) (*model.Claims, er
 	}
 
 	// Проверяем тип токена
-	if tokenType, ok := claims["type"].(string); !ok || tokenType != "refresh" {
+	tokenType, ok := claims["type"].(string)
+	if !ok || tokenType != "refresh" {
 		return nil, ErrInvalidToken
 	}
 

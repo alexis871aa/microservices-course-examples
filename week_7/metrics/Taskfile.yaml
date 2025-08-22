@@ -170,7 +170,7 @@ tasks:
         ENV_FILE="{{.ENVDIR}}/.env"
         TEMPLATE_FILE="{{.ENVDIR}}/.env.template"
         SCRIPT="{{.ENVDIR}}/generate-env.sh"
-
+        
         if [ ! -f "$ENV_FILE" ]; then
           if [ -f "$TEMPLATE_FILE" ]; then
             echo "🔄 Файл $ENV_FILE не найден, создаем из шаблона $TEMPLATE_FILE"
@@ -181,7 +181,7 @@ tasks:
             exit 1
           fi
         fi
-
+        
         chmod +x "$SCRIPT"
         # Передаем список сервисов в виде строки с разделителями-запятыми
         export SERVICES="{{.SERVICES}}"
@@ -219,3 +219,138 @@ tasks:
       - test -x {{.GRPCURL}}
 
   # === gRPC тестирование через grpcurl ===
+
+  up-core:
+    desc: Поднять core контейнеры (мониторинг)
+    dir: deploy/compose/core
+    cmds:
+      - echo "[task] 🚀 Поднимаем core контейнеры (мониторинг)"
+      - docker compose up --build --detach
+
+  down-core:
+    desc: Остановить и удалить core контейнеры
+    dir: deploy/compose/core
+    cmds:
+      - echo "[task] 🛑 Останавливаем core контейнеры"
+      - docker compose down --volumes
+
+  up-all:
+    desc: Поднять все сервисы по очереди вместе с зависимостями
+    cmds:
+      - task up-core
+
+  down-all:
+    desc: Остановить и удалить все сервисы по очереди вместе с зависимостями
+    cmds:
+      - task down-core
+
+  grpc:test:create:
+    desc: "Тестирует создание наблюдения НЛО"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "🛸 Создаем новое наблюдение НЛО..."
+      - |
+        {{.GRPCURL}} -plaintext -d '{
+          "info": {
+            "observed_at": "2024-01-15T20:30:00Z",
+            "location": "Москва, Красная площадь",
+            "description": "Яркий светящийся объект треугольной формы",
+            "color": "зеленый",
+            "sound": false,
+            "duration_seconds": 120
+          }
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Create
+
+  grpc:test:get:
+    desc: "Тестирует получение наблюдения НЛО по UUID"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "🔍 Получаем наблюдение НЛО по UUID..."
+      - echo "⚠️  Замените UUID на реальный из результата Create:"
+      - |
+        {{.GRPCURL}} -plaintext -d '{
+          "uuid": "REPLACE_WITH_REAL_UUID"
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Get
+
+  grpc:test:update:
+    desc: "Тестирует обновление наблюдения НЛО"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "✏️  Обновляем наблюдение НЛО..."
+      - echo "⚠️  Замените UUID на реальный из результата Create:"
+      - |
+        {{.GRPCURL}} -plaintext -d '{
+          "uuid": "REPLACE_WITH_REAL_UUID",
+          "update_info": {
+            "location": "Санкт-Петербург, Дворцовая площадь",
+            "description": "Обновленное описание: объект изменил форму",
+            "color": "синий",
+            "duration_seconds": 180
+          }
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Update
+
+  grpc:test:delete:
+    desc: "Тестирует мягкое удаление наблюдения НЛО"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "🗑️  Удаляем наблюдение НЛО (мягкое удаление)..."
+      - echo "⚠️  Замените UUID на реальный из результата Create:"
+      - |
+        {{.GRPCURL}} -plaintext -d '{
+          "uuid": "REPLACE_WITH_REAL_UUID"
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Delete
+
+  grpc:test:all:
+    desc: "Запускает полный цикл тестирования gRPC API"
+    deps: [ grpcurl:install ]
+    cmds:
+      - echo "🚀 Запускаем полный цикл тестирования UFO gRPC API..."
+      - echo ""
+      - echo "🛸 Создаем тестовое наблюдение..."
+      - |
+        UUID=$({{.GRPCURL}} -plaintext -d '{
+          "info": {
+            "observed_at": "2024-01-15T20:30:00Z",
+            "location": "Тестовая локация",
+            "description": "Автоматический тест gRPC API",
+            "color": "красный",
+            "sound": true,
+            "duration_seconds": 60
+          }
+        }' {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Create | grep '"uuid"' | cut -d'"' -f4)
+        
+        if [ -n "$UUID" ]; then
+          echo "✅ Создано наблюдение с UUID: $UUID"
+          
+          echo ""
+          echo "🔍 Получаем созданное наблюдение..."
+          {{.GRPCURL}} -plaintext -d "{\"uuid\": \"$UUID\"}" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Get
+          
+          echo ""
+          echo "✏️  Обновляем наблюдение..."
+          {{.GRPCURL}} -plaintext -d "{
+            \"uuid\": \"$UUID\",
+            \"update_info\": {
+              \"description\": \"Обновленное описание через автотест\",
+              \"color\": \"фиолетовый\"
+            }
+          }" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Update
+          
+          echo ""
+          echo "🔍 Проверяем обновленное наблюдение..."
+          {{.GRPCURL}} -plaintext -d "{\"uuid\": \"$UUID\"}" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Get
+          
+          echo ""
+          echo "🗑️  Удаляем наблюдение..."
+          {{.GRPCURL}} -plaintext -d "{\"uuid\": \"$UUID\"}" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Delete
+          
+          echo ""
+          echo "🔍 Проверяем удаленное наблюдение (должно содержать deleted_at)..."
+          {{.GRPCURL}} -plaintext -d "{\"uuid\": \"$UUID\"}" {{.GRPC_SERVER_ADDR}} ufo.v1.UFOService/Get
+          
+          echo ""
+          echo "✅ Полный цикл тестирования завершен!"
+        else
+          echo "❌ Не удалось создать наблюдение"
+          exit 1
+        fi

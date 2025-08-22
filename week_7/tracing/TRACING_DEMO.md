@@ -557,4 +557,274 @@ task format
 ### Микросервисная архитектура
 - Каждый сервис имеет свою область ответственности
 - Асинхронная коммуникация через gRPC
-- Централизованное логирование и трейсинг 
+- Централизованное логирование и трейсинг
+
+---
+
+## 📊 Best Practices трейсинга в продакшене
+
+### 🏗️ Архитектурные паттерны трейсинга
+
+#### Слои трейсинга (по убыванию детализации)
+```
+📡 Infrastructure Layer    - Load Balancer, API Gateway, CDN
+🌐 Transport Layer         - HTTP/gRPC handlers, middleware  
+🔧 Service Layer          - бизнес-логика, межсервисные вызовы
+💾 Repository Layer       - база данных, кэш, внешние API
+🔩 Library Layer          - низкоуровневые операции
+```
+
+#### Автоматический vs Ручной трейсинг
+
+**Автоматический трейсинг (рекомендуется):**
+- HTTP/gRPC middleware и интерсепторы ✅
+- Database/SQL драйверы с OTel инструментацией
+- ORM hooks (GORM, Ent)
+- Redis, Kafka, RabbitMQ клиенты
+
+**Ручной трейсинг (выборочно):**
+- Критические бизнес-операции ✅ (наш `AnalyzeSighting`)
+- Сложные алгоритмы и вычисления
+- Операции с внешними API ✅ (наши межсервисные вызовы)
+
+### 🎯 Где добавлять спаны: промышленные стандарты
+
+#### 1. Transport Layer (обязательно)
+```go
+// HTTP middleware - стандартный подход
+func TracingMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        ctx, span := tracer.Start(r.Context(), "HTTP "+r.Method+" "+r.URL.Path)
+        defer span.End()
+        
+        // Атрибуты HTTP запроса
+        span.SetAttributes(
+            attribute.String("http.method", r.Method),
+            attribute.String("http.url", r.URL.String()),
+            attribute.String("user_agent", r.UserAgent()),
+        )
+        
+        next.ServeHTTP(w, r.WithContext(ctx))
+        
+        // Статус ответа
+        span.SetAttributes(
+            attribute.Int("http.status_code", /* response status */),
+        )
+    })
+}
+
+// gRPC интерсепторы (как у нас) ✅
+func UnaryServerInterceptor(serviceName string) grpc.UnaryServerInterceptor {
+    // Наша реализация корректна
+}
+```
+
+#### 2. Service Layer (выборочно)
+```go
+// Критерии для добавления спанов в service layer:
+type ServiceTracing struct {
+    // ✅ Межсервисные вызовы
+    func (s *Service) CallExternalService(ctx context.Context) {
+        ctx, span := tracer.Start(ctx, "service.call_external")
+        defer span.End()
+    }
+    
+    // ✅ Сложные бизнес-операции (>100ms)
+    func (s *Service) ComplexBusinessLogic(ctx context.Context) {
+        ctx, span := tracer.Start(ctx, "service.complex_operation")
+        defer span.End()
+    }
+    
+    // ❌ Простые CRUD операции (уже покрыты transport + repository)
+    func (s *Service) GetUser(ctx context.Context, id string) {
+        // НЕ нужен отдельный спан - есть в gRPC handler + DB query
+    }
+}
+```
+
+#### 3. Repository Layer (автоматически)
+```go
+// Использование инструментированных драйверов
+import (
+    _ "github.com/go-sql-driver/mysql"
+    "go.opentelemetry.io/contrib/instrumentation/database/sql/otelsql"
+)
+
+func initDB() {
+    // Автоматический трейсинг всех SQL запросов
+    db, err := otelsql.Open("mysql", dsn)
+    
+    // Или для MongoDB
+    opts := options.Client().SetMonitor(otelmongo.NewMonitor())
+}
+```
+
+### 📏 Принципы покрытия кода трейсами
+
+#### High-Level Coverage (100% обязательно)
+- **Все HTTP/gRPC endpoints** ✅ (у нас есть)
+- **Все межсервисные вызовы** ✅ (UFO → Analysis → Classification)
+- **Все операции с БД/кэшем** ⚠️ (у нас можно добавить)
+- **Все очереди/брокеры сообщений**
+
+#### Business-Level Coverage (по потребности)
+- **Критические бизнес-процессы** ✅ (анализ НЛО)
+- **Алгоритмы >50ms** ✅ (классификация)
+- **Операции с внешними системами** ✅ (межсервисные вызовы)
+- **Асинхронные задачи**
+
+#### Low-Level Coverage (редко)
+- Только для специфичной отладки performance
+- Математические вычисления
+- Парсинг данных
+
+### 🏢 Подходы в крупных компаниях
+
+#### Netflix/Amazon подход
+```go
+// Спаны на границах сервисов + критические операции
+type Service struct {
+    tracer trace.Tracer
+}
+
+func (s *Service) CriticalOperation(ctx context.Context) error {
+    ctx, span := s.tracer.Start(ctx, "critical_operation")
+    defer func() {
+        if err := recover(); err != nil {
+            span.RecordError(fmt.Errorf("panic: %v", err))
+        }
+        span.End()
+    }()
+    
+    return s.executeOperation(ctx)
+}
+```
+
+#### Google подход (OpenTelemetry)
+```go
+// Максимальная автоматизация через инструментацию
+import _ "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+import _ "go.opentelemetry.io/contrib/instrumentation/database/sql/otelsql"
+import _ "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+
+// Ручной трейсинг только для специфичной бизнес-логики
+```
+
+#### Uber подход (Jaeger авторы)
+```go
+// Инъекция трейсера через DI + контекстные спаны
+type Handler struct {
+    tracer opentracing.Tracer
+    service Service
+}
+
+func (h *Handler) ProcessRequest(ctx context.Context) {
+    span := opentracing.SpanFromContext(ctx)
+    defer span.Finish()
+    
+    // Дочерние спаны для каждой операции
+    span.SetTag("user.id", userID)
+    span.LogFields(log.String("event", "processing_started"))
+}
+```
+
+#### Антипаттерны (чего избегать):
+```go
+// ❌ НЕ делать так:
+func badExample(ctx context.Context) {
+    // Слишком детальные спаны
+    ctx, span1 := tracer.Start(ctx, "validate_input")
+    // ... validation
+    span1.End()
+    
+    ctx, span2 := tracer.Start(ctx, "parse_json")
+    // ... parsing  
+    span2.End()
+    
+    ctx, span3 := tracer.Start(ctx, "convert_type")
+    // ... conversion
+    span3.End()
+}
+
+// ✅ Лучше так:
+func goodExample(ctx context.Context) {
+    ctx, span := tracer.Start(ctx, "process_request")
+    defer span.End()
+    
+    // Все мелкие операции в одном спане
+    // + атрибуты для деталей
+    span.SetAttributes(
+        attribute.Bool("validation.passed", true),
+        attribute.String("input.type", "json"),
+    )
+}
+```
+
+### 🔄 Правильная последовательность процессоров в OpenTelemetry
+
+**Критически важно!** Порядок процессоров в пайплайне влияет на производительность:
+
+```yaml
+# ❌ Неправильно: 
+processors: [batch, probabilistic_sampler]
+# Сначала батчуем ВСЕ трейсы, потом отбрасываем лишние
+
+# ✅ Правильно:
+processors: [probabilistic_sampler, batch]
+# Сначала отбрасываем лишние трейсы, потом батчуем только нужные
+```
+
+#### Логика оптимизации:
+
+**Неправильная последовательность:**
+```
+1000 трейсов → batch (группирует все 1000) → sampler (оставляет 100) → экспорт 100
+```
+- Батчуем лишние 900 трейсов
+- Больше работы с памятью и CPU
+
+**Правильная последовательность:**
+```
+1000 трейсов → sampler (оставляет 100) → batch (группирует только 100) → экспорт 100
+```
+- Сразу отбрасываем 900 трейсов
+- Батчуем только нужные 100 трейсов
+- **Экономия:** 90% меньше работы с памятью и CPU
+
+### 🏥 Упрощенный мониторинг коллектора
+
+**Принцип:** один простой и надежный способ проверки состояния.
+
+```yaml
+# ✅ Единый подход: Prometheus метрики на порту 8888
+service:
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8888  # Метрики + healthcheck в одном месте
+
+# Docker healthcheck использует те же метрики
+healthcheck:
+  test: ["CMD", "wget", "--spider", "http://localhost:8888/metrics"]
+```
+
+**Что проверяется:**
+- Доступность коллектора (HTTP 200)
+- Количество обработанных трейсов (`otelcol_receiver_accepted_spans`)
+- Время работы (`otelcol_process_uptime_seconds`)
+- Статус экспортеров и receivers
+
+**Использование:**
+```bash
+# Проверка состояния коллектора
+curl http://localhost:8889/metrics | grep otelcol_process_uptime
+
+# Статистика обработки трейсов  
+curl http://localhost:8889/metrics | grep otelcol_receiver_accepted_spans
+```
+
+**Преимущества упрощенного подхода:**
+- ✅ Один порт вместо двух (8888 вместо 8888+13133)
+- ✅ Стандартный Prometheus формат
+- ✅ Простые HTTP запросы без парсинга JSON
+- ✅ Меньше конфигурации и потенциальных ошибок
+

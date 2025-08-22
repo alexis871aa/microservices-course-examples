@@ -1,0 +1,533 @@
+version: '3'
+
+vars:
+  GOLANGCI_LINT_VERSION: 'v2.1.5'
+  GCI_VERSION: 'v0.13.6'
+  GOFUMPT_VERSION: 'v0.8.0'
+  BUF_VERSION: '1.53.0'
+  PROTOC_GEN_GO_VERSION: 'v1.36.6'
+  PROTOC_GEN_GO_GRPC_VERSION: 'v1.5.1'
+  GRPCURL_VERSION: 'v1.9.3'
+
+  BIN_DIR: '{{.ROOT_DIR}}/bin'
+  GOLANGCI_LINT: '{{.BIN_DIR}}/golangci-lint'
+  GCI: '{{.BIN_DIR}}/gci'
+  GOFUMPT: '{{.BIN_DIR}}/gofumpt'
+  BUF: '{{.BIN_DIR}}/buf'
+  PROTOC_GEN_GO: '{{.BIN_DIR}}/protoc-gen-go'
+  PROTOC_GEN_GO_GRPC: '{{.BIN_DIR}}/protoc-gen-go-grpc'
+  GRPCURL: '{{.BIN_DIR}}/grpcurl'
+
+  MODULES: ufo iam
+
+tasks:
+  install-formatters:
+    desc: "Устанавливает форматтеры gci и gofumpt в ./bin"
+    cmds:
+      - |
+        [ -f {{.GOFUMPT}} ] || {
+          echo '📦 Устанавливаем gofumpt {{.GOFUMPT_VERSION}}...'
+          GOBIN={{.BIN_DIR}} go install mvdan.cc/gofumpt@{{.GOFUMPT_VERSION}}
+        }
+        [ -f {{.GCI}} ] || {
+          echo '📦 Устанавливаем gci {{.GCI_VERSION}}...'
+          GOBIN={{.BIN_DIR}} go install github.com/daixiang0/gci@{{.GCI_VERSION}}
+        }
+    status:
+      - test -x {{.GOFUMPT}}
+      - test -x {{.GCI}}
+
+  format:
+    desc: "Форматирует весь проект gofumpt + gci, исключая mocks"
+    deps: [ install-formatters ]
+    cmds:
+      - |
+        echo "🧼 Форматируем через gofumpt ..."
+        
+        for module in {{.MODULES}}; do
+          if [ -d "$module" ]; then
+            echo "🧼 Форматируем $module"
+            find $module -type f -name '*.go' ! -path '*/mocks/*' -exec {{.GOFUMPT}} -extra -w {} +
+          fi
+        done
+      - |
+        echo "🎯 Сортируем импорты через gci ..."
+        
+        for module in {{.MODULES}}; do
+          if [ -d "$module" ]; then
+            echo "🎯 Сортируем импорты в $module"
+            find $module -type f -name '*.go' ! -path '*/mocks/*' -exec {{.GCI}} write -s standard -s default -s "prefix(github.com/olezhek28/microservices-course-examples/)" {} +
+          fi
+        done
+
+  install-golangci-lint:
+    desc: "Устанавливает golangci-lint в каталог bin"
+    cmds:
+      - |
+        [ -f {{.GOLANGCI_LINT}} ] || {
+          mkdir -p {{.BIN_DIR}}
+          echo "📦 Устанавливаем golangci-lint {{.GOLANGCI_LINT_VERSION}}..."
+          GOBIN={{.BIN_DIR}} go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
+        }
+    status:
+      - test -x {{.GOLANGCI_LINT}}
+
+  lint:
+    desc: "Запускает golangci-lint для всех модулей"
+    deps: [ install-golangci-lint ]
+    vars:
+      MODULES: '{{.MODULES}}'
+      GOLANGCI_LINT: '{{.GOLANGCI_LINT}}'
+    cmds:
+      - |
+        set -e
+        ERR=0
+        echo "🔍 Линтим все модули ..."
+        for mod in {{.MODULES}}; do
+          if [ -d "$mod" ]; then
+            echo "🔍 Линтим $mod module"
+            {{.GOLANGCI_LINT}} run $mod/... --config=.golangci.yml || ERR=1
+          fi
+        done
+        exit $ERR
+
+  install-buf:
+    desc: "Устанавливает Buf в каталог bin"
+    cmds:
+      - |
+        mkdir -p {{.BIN_DIR}}
+        [ -f {{.BUF}} ] || {
+          echo '📦 Устанавливаем buf {{.BUF_VERSION}}...'
+          GOBIN={{.BIN_DIR}} go install github.com/bufbuild/buf/cmd/buf@v{{.BUF_VERSION}}
+        }
+    status:
+      - test -x {{.BUF}}
+
+  proto:install-plugins:
+    desc: "Устанавливает protoc плагины в каталог bin"
+    cmds:
+      - |
+        [ -f {{.PROTOC_GEN_GO}} ] || {
+          echo '📦 Installing protoc-gen-go...'
+          GOBIN={{.BIN_DIR}} go install google.golang.org/protobuf/cmd/protoc-gen-go@{{.PROTOC_GEN_GO_VERSION}}
+        }
+        [ -f {{.PROTOC_GEN_GO_GRPC}} ] || {
+          echo '📦 Installing protoc-gen-go-grpc...'
+          GOBIN={{.BIN_DIR}} go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@{{.PROTOC_GEN_GO_GRPC_VERSION}}
+        }
+
+  proto:lint:
+    deps: [ install-buf, proto:install-plugins, proto:update-deps ]
+    desc: Проверка .proto-файлов на соответствие стилю
+    dir: ./shared/proto
+    cmds:
+      - '{{.BUF}} lint'
+
+  proto:update-deps:
+    deps: [ install-buf ]
+    desc: Обновляет зависимости protobuf из удаленных репозиториев (googleapis и т.д.)
+    dir: ./shared/proto
+    cmds:
+      - |
+        echo "🔄 Обновляем зависимости buf..."
+        {{.BUF}} dep update
+
+  proto:build:ufo:
+    desc: Сборка proto файлов UFO сервиса
+    deps: [ install-buf, proto:install-plugins ]
+    dir: ./shared/proto
+    cmds:
+      - 'mkdir -p ../pkg/proto/ufo/v1'
+      - '{{.BUF}} build --path ufo --path common --as-file-descriptor-set --output "../pkg/proto/ufo/v1/ufo_descriptor.pb"'
+
+  proto:build:iam:
+    desc: Сборка proto файлов IAM сервиса
+    deps: [ install-buf, proto:install-plugins ]
+    dir: ./shared/proto
+    cmds:
+      - 'mkdir -p ../pkg/proto/iam/v1'
+      - '{{.BUF}} build --path iam --path common --as-file-descriptor-set --output "../pkg/proto/iam/v1/iam_descriptor.pb"'
+
+  proto:build:all:
+    desc: Сборка всех proto дескрипторов для каждого сервиса отдельно
+    deps: [ proto:build:ufo, proto:build:iam ]
+
+  proto:gen:
+    deps: [ install-buf, proto:install-plugins, proto:lint ]
+    desc: Генерация Go-кода из .proto
+    dir: ./shared/proto
+    cmds:
+      - '{{.BUF}} generate'
+      - task proto:build:all
+
+  deps:update:
+    desc: "Обновление зависимостей в go.mod во всех модулях"
+    cmds:
+      - |
+        echo "🔄 Обновление зависимостей в go.work"
+        go work sync
+        echo "🔄 Обновление зависимостей в go.mod во всех модулях"
+        for mod in {{.MODULES}}; do
+          if [ -d "$mod" ]; then
+            echo "🔄 Обновление зависимостей в $mod"
+            (cd "$mod" && go mod tidy -compat=1.24) || exit 1
+          fi
+        done
+
+  up:
+    desc: "🚀 Запускает полную инфраструктуру (UFO API + IAM API + Envoy Gateway)"
+    cmds:
+      - echo "🏗️ Собираем и запускаем инфраструктуру..."
+      - docker compose up --build --detach
+
+  down:
+    desc: "🛑 Останавливает всю инфраструктуру"
+    cmds:
+      - echo "🛑 Останавливаем инфраструктуру..."
+      - docker compose down
+      - echo "✅ Инфраструктура остановлена"
+
+  grpcurl:install:
+    desc: "Устанавливает grpcurl в каталог bin"
+    cmds:
+      - |
+        [ -f {{.GRPCURL}} ] || {
+          echo '📦 Устанавливаем grpcurl {{.GRPCURL_VERSION}}...'
+          GOBIN={{.BIN_DIR}} go install github.com/fullstorydev/grpcurl/cmd/grpcurl@{{.GRPCURL_VERSION}}
+        }
+    status:
+      - test -x {{.GRPCURL}}
+
+  iam:test:whoami:
+    desc: "Тестирует Whoami API через gRPC"
+    deps: [grpcurl:install]
+    cmds:
+      - |
+        echo "🧪 Тестирование Whoami с валидным session UUID"
+        result=$({{.GRPCURL}} -plaintext -d '{"session_uuid": "123e4567-e89b-12d3-a456-426614174000"}' localhost:50052 iam.v1.IAMService/Whoami)
+        echo "✅ Результат: $result"
+
+        # Проверяем, что в результате есть session и user
+        if echo "$result" | grep -q '"session"' && echo "$result" | grep -q '"user"'; then
+          echo "✅ Session и User найдены в ответе"
+        else
+          echo "❌ Session или User не найдены в ответе" >&2
+          exit 1
+        fi
+
+        echo "🧪 Тестирование Whoami с другим валидным session UUID"
+        result=$({{.GRPCURL}} -plaintext -d '{"session_uuid": "987fcdeb-51a2-43d7-8f9e-123456789abc"}' localhost:50052 iam.v1.IAMService/Whoami)
+        echo "✅ Результат: $result"
+
+        # Проверяем, что данные изменились (другой UUID)
+        if echo "$result" | grep -q '"uuid"'; then
+          echo "✅ UUID найден в ответе"
+        else
+          echo "❌ UUID не найден в ответе" >&2
+          exit 1
+        fi
+
+        echo "🚫 Тестирование Whoami с невалидным session UUID (должен вернуть ошибку)"
+        result=$({{.GRPCURL}} -plaintext -d '{"session_uuid": "invalid-uuid"}' localhost:50052 iam.v1.IAMService/Whoami 2>&1 || true)
+        echo "✅ Результат: $result"
+        
+        # Проверяем, что получили ошибку валидации UUID
+        if echo "$result" | grep -q "invalid session UUID" && echo "$result" | grep -q "Code: Unknown"; then
+          echo "✅ Невалидный UUID корректно отклонен"
+        else
+          echo "❌ Невалидный UUID должен был быть отклонен" >&2
+          exit 1
+        fi
+
+        echo "🚫 Тестирование Whoami с пустым session UUID (должен вернуть ошибку)"
+        result=$({{.GRPCURL}} -plaintext -d '{"session_uuid": ""}' localhost:50052 iam.v1.IAMService/Whoami 2>&1 || true)
+        echo "✅ Результат: $result"
+        
+        # Проверяем, что получили ошибку валидации UUID
+        if echo "$result" | grep -q "invalid session UUID" && echo "$result" | grep -q "invalid UUID length: 0"; then
+          echo "✅ Пустой UUID корректно отклонен"
+        else
+          echo "❌ Пустой UUID должен был быть отклонен" >&2
+          exit 1
+        fi
+
+        echo "🚫 Тестирование Whoami без поля session_uuid (должен вернуть ошибку)"
+        result=$({{.GRPCURL}} -plaintext -d '{}' localhost:50052 iam.v1.IAMService/Whoami 2>&1 || true)
+        echo "✅ Результат: $result"
+        
+        # Проверяем, что получили ошибку валидации UUID
+        if echo "$result" | grep -q "invalid session UUID" && echo "$result" | grep -q "invalid UUID length: 0"; then
+          echo "✅ Отсутствующий UUID корректно отклонен"
+        else
+          echo "❌ Отсутствующий UUID должен был быть отклонен" >&2
+          exit 1
+        fi
+
+  iam:test:check:
+    desc: "Тестирует External Authorization API через gRPC"
+    deps: [grpcurl:install]
+    cmds:
+      - |
+        echo "🔐 Тестирование External Authorization с валидным session cookie"
+        result=$({{.GRPCURL}} -plaintext -d '{
+          "attributes": {
+            "request": {
+              "http": {
+                "headers": {
+                  "cookie": "X-Session-Uuid=123e4567-e89b-12d3-a456-426614174000; other=value"
+                }
+              }
+            }
+          }
+        }' localhost:50052 envoy.service.auth.v3.Authorization/Check)
+        echo "✅ Результат: $result"
+        
+        # Проверяем, что авторизация прошла успешно (есть okResponse и headers)
+        if echo "$result" | grep -q '"okResponse"' && echo "$result" | grep -q '"headers"'; then
+          echo "✅ Авторизация успешна, заголовки добавлены"
+        else
+          echo "❌ Авторизация не прошла или заголовки отсутствуют" >&2
+          exit 1
+        fi
+        
+        echo "🔐 Тестирование с URL-encoded session cookie"
+        result=$({{.GRPCURL}} -plaintext -d '{
+          "attributes": {
+            "request": {
+              "http": {
+                "headers": {
+                  "cookie": "X-Session-Uuid=987fcdeb%2D51a2%2D43d7%2D8f9e%2D123456789abc"
+                }
+              }
+            }
+          }
+        }' localhost:50052 envoy.service.auth.v3.Authorization/Check)
+        echo "✅ Результат: $result"
+        
+        # Проверяем успешную авторизацию
+        if echo "$result" | grep -q '"okResponse"'; then
+          echo "✅ URL-encoded cookie обработана корректно"
+        else
+          echo "❌ URL-encoded cookie не обработана" >&2
+          exit 1
+        fi
+        
+        echo "🔐 Тестирование с множественными cookies"
+        result=$({{.GRPCURL}} -plaintext -d '{
+          "attributes": {
+            "request": {
+              "http": {
+                "headers": {
+                  "cookie": "other_cookie=value1; X-Session-Uuid=aaa-bbb-ccc-ddd; another=value2"
+                }
+              }
+            }
+          }
+        }' localhost:50052 envoy.service.auth.v3.Authorization/Check)
+        echo "✅ Результат: $result"
+        
+        echo "🚫 Тестирование БЕЗ session cookie (должен отклонить)"
+        result=$({{.GRPCURL}} -plaintext -d '{
+          "attributes": {
+            "request": {
+              "http": {
+                "headers": {
+                  "cookie": "other=value; not_session=123"
+                }
+              }
+            }
+          }
+        }' localhost:50052 envoy.service.auth.v3.Authorization/Check)
+        echo "✅ Результат: $result"
+        
+        # Проверяем, что запрос отклонен
+        if echo "$result" | grep -q '"deniedResponse"' && echo "$result" | grep -q '"code": 16'; then
+          echo "✅ Запрос корректно отклонен (нет session cookie)"
+        else
+          echo "❌ Запрос должен был быть отклонен" >&2
+          exit 1
+        fi
+        
+        echo "🚫 Тестирование БЕЗ cookies вообще (должен отклонить)"
+        result=$({{.GRPCURL}} -plaintext -d '{
+          "attributes": {
+            "request": {
+              "http": {
+                "headers": {
+                  "authorization": "Bearer some-token"
+                }
+              }
+            }
+          }
+        }' localhost:50052 envoy.service.auth.v3.Authorization/Check)
+        echo "✅ Результат: $result"
+        
+        # Проверяем отклонение
+        if echo "$result" | grep -q '"deniedResponse"' && echo "$result" | grep -q '"code": 16'; then
+          echo "✅ Запрос корректно отклонен (нет cookies)"
+        else
+          echo "❌ Запрос должен был быть отклонен" >&2
+          exit 1
+        fi
+        
+        echo "🚫 Тестирование БЕЗ attributes (должен отклонить)"
+        result=$({{.GRPCURL}} -plaintext -d '{}' localhost:50052 envoy.service.auth.v3.Authorization/Check)
+        echo "✅ Результат: $result"
+        
+        # Проверяем отклонение
+        if echo "$result" | grep -q '"deniedResponse"' && echo "$result" | grep -q '"code": 16'; then
+          echo "✅ Запрос корректно отклонен (нет attributes)"
+        else
+          echo "❌ Запрос должен был быть отклонен" >&2
+          exit 1
+        fi
+        
+        echo "🚫 Тестирование с пустым cookie header (должен отклонить)"
+        result=$({{.GRPCURL}} -plaintext -d '{
+          "attributes": {
+            "request": {
+              "http": {
+                "headers": {
+                  "cookie": ""
+                }
+              }
+            }
+          }
+        }' localhost:50052 envoy.service.auth.v3.Authorization/Check)
+        echo "✅ Результат: $result"
+        
+        # Проверяем отклонение
+        if echo "$result" | grep -q '"deniedResponse"' && echo "$result" | grep -q '"code": 16'; then
+          echo "✅ Запрос корректно отклонен (пустой cookie)"
+        else
+          echo "❌ Запрос должен был быть отклонен" >&2
+          exit 1
+        fi
+
+  ufo:test:gateway:
+    desc: "Тестирует UFO API через Envoy gateway с аутентификацией"
+    deps: [grpcurl:install]
+    cmds:
+      - |
+        echo "🚀 Тестирование UFO API через HTTP gateway с аутентификацией"
+        
+        # Тестируем создание UFO sighting через HTTP API с валидной аутентификацией
+        echo "📝 Создаем UFO sighting через HTTP API с X-Session-Uuid cookie"
+        create_result=$(curl -s -X POST http://localhost:8080/api/v1/ufo \
+          -H "Content-Type: application/json" \
+          -H "Cookie: X-Session-Uuid=123e4567-e89b-12d3-a456-426614174000" \
+          -d '{
+            "info": {
+              "observed_at": "2024-01-15T20:30:00Z",
+              "location": "Area 51, Nevada",
+              "description": "Bright circular object with pulsating lights",
+              "color": "silver",
+              "sound": true,
+              "duration_seconds": 120
+            }
+          }')
+        echo "✅ Результат создания: $create_result"
+        
+        # Извлекаем UUID из ответа
+        ufo_uuid=$(echo "$create_result" | tr -d '\n ' | grep -o '"uuid":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$ufo_uuid" ]; then
+          echo "❌ UUID не найден в ответе создания" >&2
+          exit 1
+        fi
+        echo "✅ Создан UFO sighting с UUID: $ufo_uuid"
+        
+        echo "📖 Получаем UFO sighting по UUID через HTTP API с другим session cookie"
+        get_result=$(curl -s http://localhost:8080/api/v1/ufo/$ufo_uuid \
+          -H "Cookie: X-Session-Uuid=987fcdeb-51a2-43d7-8f9e-123456789abc")
+        echo "✅ Результат получения: $get_result"
+        
+        # Проверяем, что получили корректные данные
+        if echo "$get_result" | grep -q '"location"' && echo "$get_result" | grep -q "Area 51"; then
+          echo "✅ UFO sighting корректно получен"
+        else
+          echo "❌ UFO sighting не получен или данные некорректны" >&2
+          exit 1
+        fi
+        
+        echo "🔄 Обновляем UFO sighting через HTTP API с третьим session cookie"
+        update_result=$(curl -s -X PUT http://localhost:8080/api/v1/ufo/$ufo_uuid \
+          -H "Content-Type: application/json" \
+          -H "Cookie: X-Session-Uuid=550e8400-e29b-41d4-a716-446655440000" \
+          -d '{
+            "update_info": {
+              "location": "Roswell, New Mexico", 
+              "description": "Updated: Large triangular craft with silent movement",
+              "duration_seconds": 180
+            }
+          }')
+        echo "✅ Результат обновления: $update_result (ожидается пустой ответ)"
+        
+        echo "📖 Проверяем обновленные данные через HTTP API с множественными cookies"
+        updated_result=$(curl -s http://localhost:8080/api/v1/ufo/$ufo_uuid \
+          -H "Cookie: other=value1; X-Session-Uuid=123e4567-e89b-12d3-a456-426614174000; another=value2")
+        echo "✅ Результат после обновления: $updated_result"
+        
+        # Проверяем, что данные обновились
+        if echo "$updated_result" | grep -q "Roswell" && echo "$updated_result" | grep -q "triangular"; then
+          echo "✅ UFO sighting корректно обновлен"
+        else
+          echo "❌ UFO sighting не был обновлен" >&2
+          exit 1
+        fi
+        
+        echo "🗑️ Удаляем UFO sighting через HTTP API с простым session cookie"
+        delete_result=$(curl -s -X DELETE http://localhost:8080/api/v1/ufo/$ufo_uuid \
+          -H "Cookie: X-Session-Uuid=123e4567-e89b-12d3-a456-426614174000")
+        echo "✅ Результат удаления: $delete_result (ожидается пустой ответ)"
+        
+        echo "🚫 Проверяем, что удаленный sighting недоступен"
+        deleted_check=$(curl -s http://localhost:8080/api/v1/ufo/$ufo_uuid \
+          -H "Cookie: X-Session-Uuid=123e4567-e89b-12d3-a456-426614174000" || true)
+        echo "✅ Проверка удаления: $deleted_check"
+        
+        echo "🚫 Тестируем запрос БЕЗ аутентификации (должен быть отклонен)"
+        no_auth_response=$(curl -s -w "HTTP_STATUS:%{http_code}" http://localhost:8080/api/v1/ufo \
+          -X POST \
+          -H "Content-Type: application/json" \
+          -d '{"info": {"observed_at": "2024-01-15T20:30:00Z", "location": "Test", "description": "Test"}}' || true)
+        no_auth_body=$(echo "$no_auth_response" | sed 's/HTTP_STATUS:[0-9]*$//')
+        no_auth_status=$(echo "$no_auth_response" | grep -o 'HTTP_STATUS:[0-9]*' | cut -d':' -f2)
+        echo "✅ Результат без аутентификации: $no_auth_body (HTTP $no_auth_status)"
+        
+        # Должен быть отклонен с кодом 403 или 401
+        if [ "$no_auth_status" = "403" ] || [ "$no_auth_status" = "401" ]; then
+          echo "✅ Запрос без аутентификации корректно отклонен (HTTP $no_auth_status)"
+        else
+          echo "❌ Запрос без аутентификации должен был быть отклонен с HTTP 403/401, получен HTTP $no_auth_status" >&2
+          exit 1
+        fi
+        
+        echo "🚫 Тестируем запрос с неправильными cookies (должен быть отклонен)"
+        wrong_cookies_response=$(curl -s -w "HTTP_STATUS:%{http_code}" http://localhost:8080/api/v1/ufo \
+          -X POST \
+          -H "Content-Type: application/json" \
+          -H "Cookie: other=value; not_session=123" \
+          -d '{"info": {"observed_at": "2024-01-15T20:30:00Z", "location": "Test", "description": "Test"}}' || true)
+        wrong_cookies_body=$(echo "$wrong_cookies_response" | sed 's/HTTP_STATUS:[0-9]*$//')
+        wrong_cookies_status=$(echo "$wrong_cookies_response" | grep -o 'HTTP_STATUS:[0-9]*' | cut -d':' -f2)
+        echo "✅ Результат с неправильными cookies: $wrong_cookies_body (HTTP $wrong_cookies_status)"
+        
+        # Должен быть отклонен с кодом 403 или 401
+        if [ "$wrong_cookies_status" = "403" ] || [ "$wrong_cookies_status" = "401" ]; then
+          echo "✅ Запрос с неправильными cookies корректно отклонен (HTTP $wrong_cookies_status)"
+        else
+          echo "❌ Запрос с неправильными cookies должен был быть отклонен с HTTP 403/401, получен HTTP $wrong_cookies_status" >&2
+          exit 1
+        fi
+
+  iam:test:all:
+    desc: "Запускает полный цикл тестирования IAM gRPC API"
+    deps: [grpcurl:install]
+    cmds:
+      - echo "🚀 Запускаем полный цикл тестирования IAM gRPC API..."
+      - echo ""
+      - task: iam:test:whoami
+      - echo ""
+      - task: iam:test:check
+      - echo ""
+      - echo "🎉 Все тесты IAM API завершены успешно!"

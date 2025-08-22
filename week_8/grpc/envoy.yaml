@@ -1,0 +1,259 @@
+# ===============================
+# ENVOY PROXY КОНФИГУРАЦИЯ ДЛЯ HTTP-TO-GRPC TRANSCODING
+# ===============================
+
+# Административная настройка — конфигурация административного интерфейса
+admin:
+  address:
+    socket_address:
+      # IP адрес для административного интерфейса (0.0.0.0 = все интерфейсы)
+      address: 0.0.0.0
+      # Порт административного интерфейса (доступен по /ready, /stats, /config_dump)
+      port_value: 8081
+
+# ===============================
+# STATIC RESOURCES
+# ===============================
+static_resources:
+  # ===============================
+  # LISTENERS (Слушатели входящих соединений)
+  # ===============================
+  listeners:
+  - name: ufo_api_listener
+    # Имя listener'а — используется в логах и метриках для идентификации
+    
+    address:
+      socket_address:
+        # IP адрес, на котором слушаем входящие соединения
+        # 0.0.0.0 означает "слушать на всех доступных сетевых интерфейсах"
+        address: 0.0.0.0
+        # Порт, на котором принимаем HTTP-трафик от клиентов
+        port_value: 8080
+
+    # Фильтры обработки соединений — определяют как обрабатывать входящий трафик
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        # HTTP Connection Manager — основной фильтр для обработки HTTP-трафика
+        # Этот фильтр парсит HTTP-запросы, применяет маршрутизацию, добавляет заголовки
+        
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          
+          # Имя схемы маршрутизации (используется в метриках)
+          stat_prefix: ufo_api
+          
+          # ===============================
+          # КОНФИГУРАЦИЯ МАРШРУТИЗАЦИИ
+          # ===============================
+          route_config:
+            name: ufo_routes
+            # Имя конфигурации маршрутизации
+            
+            virtual_hosts:
+            # Virtual hosts — логическое разделение трафика по доменам или путям
+            - name: ufo_service
+              # Имя виртуального хоста
+              
+              domains: ["*"]
+              # Домены, которые обслуживает этот virtual host
+              # "*" означает "любой домен" — подходит для локальной разработки
+              
+              # ===============================
+              # CORS НАСТРОЙКИ
+              # ===============================
+              cors:
+                # Разрешаем CORS для веб-приложений
+                allow_origin_string_match:
+                - prefix: "*"
+                allow_methods: GET, PUT, DELETE, POST, OPTIONS
+                allow_headers: keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,custom-header-1,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout
+                max_age: "1728000"
+                expose_headers: custom-header-1,grpc-status,grpc-message
+              
+              # ===============================
+              # ПРАВИЛА МАРШРУТИЗАЦИИ
+              # ===============================
+              routes:
+              # Здесь определяем куда направлять различные запросы
+              
+              - match:
+                  # Условие совпадения — запросы с префиксом /api/v1/ufo
+                  prefix: "/api/v1/ufo"
+                route:
+                  # Действие при совпадении — перенаправить на кластер ufo_grpc_cluster
+                  cluster: ufo_grpc_cluster
+                  
+                  # Максимальное время ожидания ответа от backend сервиса
+                  # Если backend не отвечает за 30 секунд — возвращаем 504 Gateway Timeout
+                  timeout: 30s
+              
+              # Маршрут по умолчанию — для всех остальных запросов
+              - match:
+                  prefix: "/"
+                direct_response:
+                  # Прямой ответ без обращения к backend
+                  status: 404
+                  body:
+                    inline_string: |
+                      {
+                        "error": "Not Found",
+                        "message": "Available endpoints: /api/v1/ufo",
+                        "examples": [
+                          "POST /api/v1/ufo - Create UFO sighting",
+                          "GET /api/v1/ufo/{uuid} - Get UFO sighting",
+                          "PUT /api/v1/ufo/{uuid} - Update UFO sighting",
+                          "DELETE /api/v1/ufo/{uuid} - Delete UFO sighting"
+                        ]
+                      }
+
+          # ===============================
+          # HTTP ФИЛЬТРЫ
+          # ===============================
+          http_filters:
+          # HTTP фильтры применяются к каждому запросу в указанном порядке
+          
+          # CORS фильтр для поддержки веб-приложений
+          - name: envoy.filters.http.cors
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
+          
+          # gRPC JSON Transcoder — ключевой фильтр для преобразования HTTP в gRPC
+          - name: envoy.filters.http.grpc_json_transcoder
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_json_transcoder.v3.GrpcJsonTranscoder
+              
+              # Путь к скомпилированному proto файлу с описанием API
+              proto_descriptor: "/etc/envoy/ufo_descriptor.pb"
+              
+              # Список gRPC сервисов, для которых включен transcoding
+              services: ["ufo.v1.UFOService"]
+              
+              # Автоматически определять gRPC-метод по HTTP-маршруту
+              match_incoming_request_route: true
+              
+              # Настройки преобразования JSON
+              print_options:
+                # Добавлять пробелы в JSON для лучшей читаемости
+                add_whitespace: true
+                # Всегда выводить поля с примитивными типами, даже если они имеют значения по умолчанию
+                always_print_primitive_fields: true
+                # Использовать имена перечислений вместо числовых значений
+                always_print_enums_as_ints: false
+                # Сохранять имена полей в proto формате (snake_case)
+                preserve_proto_field_names: true
+              
+              # Игнорировать неизвестные поля в JSON запросах
+              ignore_unknown_query_parameters: true
+          
+          # Router фильтр — основной фильтр маршрутизации, ОБЯЗАТЕЛЬНО должен быть последним
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  # ===============================
+  # CLUSTERS (Кластеры backend сервисов)
+  # ===============================
+  # Clusters описывают группы backend серверов и настройки подключения к ним
+  
+  clusters:
+  - name: ufo_grpc_cluster
+    # Имя кластера (должно совпадать с именем в маршрутах)
+    
+    # ===============================
+    # DISCOVERY TYPE
+    # ===============================
+    type: STRICT_DNS
+    # Тип обнаружения endpoints:
+    # - STRICT_DNS: использовать DNS для резолвинга хостов (подходит для Docker)
+    # - STATIC: статический список endpoints
+    # - EDS: External Discovery Service для динамического обнаружения
+    
+    # ===============================
+    # LOAD BALANCING
+    # ===============================
+    lb_policy: ROUND_ROBIN
+    # Политика балансировки нагрузки:
+    # - ROUND_ROBIN: по очереди между всеми healthy endpoints
+    # - LEAST_REQUEST: на endpoint с наименьшим количеством активных запросов
+    # - RANDOM: случайный выбор
+    
+    # ===============================
+    # HTTP/2 НАСТРОЙКИ ДЛЯ GRPC
+    # ===============================
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_config:
+          http2_protocol_options: {}
+    # Настройки HTTP/2 обязательны для gRPC соединений
+    
+    # ===============================
+    # HEALTH CHECKING
+    # ===============================
+    health_checks:
+    # Конфигурация проверок здоровья backend сервисов
+    - timeout: 3s
+      # Таймаут на проверку здоровья
+      
+      interval: 10s
+      # Интервал между проверками
+      
+      unhealthy_threshold: 3
+      # Количество неудачных проверок подряд для признания endpoint unhealthy
+      
+      healthy_threshold: 2
+      # Количество успешных проверок подряд для признания endpoint healthy
+      
+      grpc_health_check:
+        # gRPC проверка здоровья (более подходящая для gRPC сервисов)
+        service_name: "ufo.v1.UFOService"
+        # Имя сервиса для проверки здоровья
+    
+    # ===============================
+    # ENDPOINT CONFIGURATION
+    # ===============================
+    load_assignment:
+      cluster_name: ufo_grpc_cluster
+      # Имя кластера (должно совпадать с именем cluster выше)
+      
+      endpoints:
+      # Список endpoints (backend серверов)
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                # Имя сервиса ufo-grpc-server из docker-compose.yml
+                # Docker автоматически резолвит это имя в IP адрес контейнера
+                address: ufo-grpc-server
+                port_value: 50051
+                # Порт, на котором работает gRPC сервер внутри контейнера
+
+# ===============================
+# ПОТОК ОБРАБОТКИ HTTP-TO-GRPC ЗАПРОСА:
+# ===============================
+# 1. HTTP клиент отправляет запрос на localhost:8080/api/v1/ufo
+# 2. Envoy принимает HTTP запрос через ufo_api_listener
+# 3. HTTP Connection Manager парсит HTTP запрос
+# 4. CORS фильтр добавляет необходимые заголовки
+# 5. gRPC JSON Transcoder преобразует HTTP запрос в gRPC:
+#    - POST /api/v1/ufo + JSON body → ufo.v1.UFOService/Create + protobuf
+#    - GET /api/v1/ufo/{uuid} → ufo.v1.UFOService/Get + protobuf
+#    - PUT /api/v1/ufo/{uuid} + JSON body → ufo.v1.UFOService/Update + protobuf
+#    - DELETE /api/v1/ufo/{uuid} → ufo.v1.UFOService/Delete + protobuf
+# 6. Router фильтр применяет правила маршрутизации из route_config
+# 7. Envoy выбирает healthy endpoint из кластера ufo_grpc_cluster
+# 8. Отправляет gRPC запрос на ufo-grpc-server:50051 через HTTP/2
+# 9. Получает gRPC ответ от сервера (protobuf)
+# 10. gRPC JSON Transcoder преобразует protobuf ответ обратно в JSON
+# 11. Возвращает HTTP ответ клиенту
+
+# ===============================
+# КЛЮЧЕВЫЕ ПРЕИМУЩЕСТВА ДАННОЙ АРХИТЕКТУРЫ:
+# ===============================
+# 1. Единый proto файл описывает как gRPC, так и REST API
+# 2. Автоматическое преобразование между HTTP/JSON и gRPC/protobuf
+# 3. Поддержка CORS для веб-приложений
+# 4. Comprehensive health checking для надежности
+# 5. HTTP/2 для эффективного gRPC соединения
+# 6. Подробное логирование и метрики через Envoy

@@ -28,6 +28,7 @@ func NewRepository(cache cache.RedisClient) *repository {
 	}
 }
 
+// api -> service -> cache repo -> redis client (обертка наша) -> redis
 func (r *repository) getCacheKey(uuid string) string {
 	return fmt.Sprintf("%s%s", cacheKeyPrefix, uuid)
 }
@@ -53,13 +54,13 @@ func (r *repository) Get(ctx context.Context, uuid string) (model.Sighting, erro
 		return model.Sighting{}, err
 	}
 
-	return repoConverter.SightingFromRedisView(ctx, sightingRedisView), nil
+	return repoConverter.SightingFromRedisView(sightingRedisView), nil
 }
 
 func (r *repository) Set(ctx context.Context, uuid string, sighting model.Sighting, ttl time.Duration) error {
 	cacheKey := r.getCacheKey(uuid)
 
-	redisView := repoConverter.SightingToRedisView(ctx, sighting)
+	redisView := repoConverter.SightingToRedisView(sighting)
 
 	err := r.cache.HashSet(ctx, cacheKey, redisView)
 	if err != nil {

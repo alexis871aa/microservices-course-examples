@@ -8,9 +8,7 @@ services: # Раздел, в котором описываются все кон
       - ./otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml # Монтируем конфигурацию коллектора
     ports:
       - "${OTEL_GRPC_PORT}:4317" # Порт для протокола OTLP gRPC
-      - "${OTEL_HTTP_PORT}:4318" # Порт для протокола OTLP HTTP
-      - "8888:8888" # Порт для метрик самого коллектора
-      - "8889:8889" # Порт для расширения zpages (дебаг)
+      - "${OTEL_COLLECTOR_METRICS_PORT}:8888" # Prometheus метрики для мониторинга и healthcheck
     restart: unless-stopped
     # Автоматически перезапускаем контейнер при сбоях, но не при ручной остановке
     networks:
@@ -22,7 +20,7 @@ services: # Раздел, в котором описываются все кон
       timeout: 5s
       retries: 10
       start_period: 20s
-      # Проверяем готовность коллектора через метрики
+      # Проверяем готовность коллектора через Prometheus метрики
     depends_on:
       jaeger:
         condition: service_healthy
@@ -35,15 +33,10 @@ services: # Раздел, в котором описываются все кон
       - "${JAEGER_UI_PORT}:16686" # Порт для веб-интерфейса Jaeger UI
     environment:
       - COLLECTOR_OTLP_ENABLED=true # Включаем поддержку протокола OpenTelemetry
-      - COLLECTOR_OTLP_HTTP_ENABLED=true # Разрешаем прием данных по HTTP (порт 4318)
-      - COLLECTOR_OTLP_GRPC_ENABLED=true # Разрешаем прием данных по gRPC (порт 4317)
       - STORAGE_TYPE=badger # Используем Badger как хранилище данных (встроенная key-value БД)
       - BADGER_EPHEMERAL=false # Сохраняем данные на диск между перезапусками
       - BADGER_DIRECTORY_VALUE=/badger/data # Директория для хранения значений (спаны, теги, логи)
       - BADGER_DIRECTORY_KEY=/badger/key # Директория для хранения индексов (для быстрого поиска)
-      - BADGER_MAINTENANCE_INTERVAL=5m # Интервал обслуживания БД (сжатие, очистка, оптимизация)
-      - BADGER_TTL=168h # Время жизни данных (7 дней)
-      - QUERY_BASE_PATH=/jaeger # Базовый путь для UI (если за reverse proxy)
     volumes:
       - jaeger_data:/badger/data # Том для хранения данных трейсов
       - jaeger_key:/badger/key # Том для хранения индексов

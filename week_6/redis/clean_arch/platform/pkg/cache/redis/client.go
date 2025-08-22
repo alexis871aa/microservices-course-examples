@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"github.com/pkg/errors"
 	"time"
 
 	redigo "github.com/gomodule/redigo/redis"
@@ -74,8 +75,13 @@ func (c *client) Get(ctx context.Context, key string) ([]byte, error) {
 	err := c.withConn(ctx, func(ctx context.Context, conn redigo.Conn) error {
 		val, err := redigo.Bytes(conn.Do("GET", key))
 		if err != nil {
+			if errors.Is(err, redigo.ErrNil) {
+				return nil
+			}
+
 			return err
 		}
+
 		result = val
 		return nil
 	})

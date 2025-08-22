@@ -15,10 +15,22 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/olezhek28/microservices-course-examples/week_7/metrics/platform/pkg/logger"
+	platformMetrics "github.com/olezhek28/microservices-course-examples/week_7/metrics/platform/pkg/metrics"
 	ufoV1 "github.com/olezhek28/microservices-course-examples/week_7/metrics/shared/pkg/proto/ufo/v1"
 	"github.com/olezhek28/microservices-course-examples/week_7/metrics/ufo/internal/interceptor"
 	ufoMetrics "github.com/olezhek28/microservices-course-examples/week_7/metrics/ufo/internal/metrics"
 )
+
+// config конфигурация для OpenTelemetry коллектора
+type config struct{}
+
+func (c *config) CollectorEndpoint() string {
+	return "localhost:4317"
+}
+
+func (c *config) CollectorInterval() time.Duration {
+	return 10 * time.Second
+}
 
 // ufoServer простая реализация UFO gRPC сервиса
 type ufoServer struct {
@@ -31,9 +43,8 @@ func (s *ufoServer) Create(ctx context.Context, req *ufoV1.CreateRequest) (*ufoV
 		zap.String("location", req.Info.Location),
 		zap.String("description", req.Info.Description))
 
-	// Записываем метрики
-	ufoMetrics.RequestsTotal.WithLabelValues("Create", "success").Inc()
-	ufoMetrics.SightingsTotal.Inc()
+	// Записываем бизнес-метрику: количество созданных наблюдений
+	ufoMetrics.SightingsTotal.Add(ctx, 1)
 
 	// Возвращаем фиктивный UUID
 	return &ufoV1.CreateResponse{
@@ -44,9 +55,6 @@ func (s *ufoServer) Create(ctx context.Context, req *ufoV1.CreateRequest) (*ufoV
 // Get возвращает наблюдение НЛО по идентификатору
 func (s *ufoServer) Get(ctx context.Context, req *ufoV1.GetRequest) (*ufoV1.GetResponse, error) {
 	logger.Info(ctx, "Get UFO sighting called", zap.String("uuid", req.Uuid))
-
-	// Записываем метрики
-	ufoMetrics.RequestsTotal.WithLabelValues("Get", "success").Inc()
 
 	// Возвращаем фиктивные данные
 	return &ufoV1.GetResponse{
@@ -70,18 +78,12 @@ func (s *ufoServer) Get(ctx context.Context, req *ufoV1.GetRequest) (*ufoV1.GetR
 func (s *ufoServer) Update(ctx context.Context, req *ufoV1.UpdateRequest) (*emptypb.Empty, error) {
 	logger.Info(ctx, "Update UFO sighting called", zap.String("uuid", req.Uuid))
 
-	// Записываем метрики
-	ufoMetrics.RequestsTotal.WithLabelValues("Update", "success").Inc()
-
 	return &emptypb.Empty{}, nil
 }
 
 // Delete выполняет мягкое удаление наблюдения НЛО
 func (s *ufoServer) Delete(ctx context.Context, req *ufoV1.DeleteRequest) (*emptypb.Empty, error) {
 	logger.Info(ctx, "Delete UFO sighting called", zap.String("uuid", req.Uuid))
-
-	// Записываем метрики
-	ufoMetrics.RequestsTotal.WithLabelValues("Delete", "success").Inc()
 
 	return &emptypb.Empty{}, nil
 }
@@ -90,15 +92,14 @@ func (s *ufoServer) Delete(ctx context.Context, req *ufoV1.DeleteRequest) (*empt
 func (s *ufoServer) AnalyzeSighting(ctx context.Context, req *ufoV1.AnalyzeSightingRequest) (*ufoV1.AnalyzeSightingResponse, error) {
 	logger.Info(ctx, "AnalyzeSighting called", zap.String("uuid", req.Uuid))
 
-	// Записываем метрики
-	ufoMetrics.RequestsTotal.WithLabelValues("AnalyzeSighting", "success").Inc()
-	ufoMetrics.AnalysisRequestsTotal.Inc()
+	// Записываем бизнес-метрику: количество запросов на анализ
+	ufoMetrics.AnalysisRequestsTotal.Add(ctx, 1)
 
-	// Симулируем время анализа
+	// Симулируем время анализа и записываем его в бизнес-метрику
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start)
-		ufoMetrics.AnalysisDuration.Observe(duration.Seconds())
+		ufoMetrics.AnalysisDuration.Record(ctx, duration.Seconds())
 	}()
 
 	// Возвращаем фиктивный результат анализа
@@ -113,13 +114,28 @@ func main() {
 	ctx := context.Background()
 
 	// Инициализация логгера
-	err := logger.Init("info", false)
+	err := logger.Init("info", true)
 	if err != nil {
 		panic(fmt.Sprintf("failed to init logger: %v", err))
 	}
 
-	// Регистрация UFO метрик
-	ufoMetrics.RegisterMetrics()
+	// Инициализация OpenTelemetry метрик
+	cfg := &config{}
+	err = platformMetrics.InitProvider(ctx, cfg)
+	if err != nil {
+		panic(fmt.Sprintf("failed to init metrics provider: %v", err))
+	}
+	defer func() {
+		if cerr := platformMetrics.Shutdown(ctx); cerr != nil {
+			logger.Error(ctx, "Failed to shutdown metrics provider", zap.Error(cerr))
+		}
+	}()
+
+	// Инициализация UFO метрик
+	err = ufoMetrics.InitMetrics()
+	if err != nil {
+		panic(fmt.Sprintf("failed to init UFO metrics: %v", err))
+	}
 
 	// Создание gRPC сервера с интерцептором метрик
 	server := grpc.NewServer(
@@ -142,7 +158,8 @@ func main() {
 	logger.Info(ctx, "🚀 UFO gRPC server starting on :50051")
 
 	// Запуск сервера
-	if err := server.Serve(listener); err != nil {
+	err = server.Serve(listener)
+	if err != nil {
 		panic(fmt.Sprintf("failed to serve: %v", err))
 	}
 }

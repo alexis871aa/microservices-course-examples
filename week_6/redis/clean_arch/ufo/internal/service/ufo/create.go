@@ -15,7 +15,7 @@ func (s *service) Create(ctx context.Context, info model.SightingInfo) (string, 
 
 	// Получаем созданную запись для кеширования
 	sighting, err := s.ufoRepository.Get(ctx, uuid)
-	if err == nil {
+	if nil == err {
 		// Кешируем созданную запись (игнорируем ошибки кеширования)
 		_ = s.cacheRepository.Set(ctx, uuid, sighting, s.cacheTTL)
 	}
