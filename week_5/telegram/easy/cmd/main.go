@@ -13,7 +13,7 @@ import (
 
 func main() {
 	// Токен можно получить у @BotFather в Telegram
-	token := "TELEGRAM_BOT_TOKEN"
+	token := "8429316573:AAGxyK44KdurKTOq5KX65QLMN1ff5tjcCW8"
 
 	// Создаем контекст для graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())

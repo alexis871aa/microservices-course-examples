@@ -24,7 +24,7 @@ import (
 
 const (
 	// Захардкоженные значения для демонстрации
-	telegramBotToken = "TELEGRAM_BOT_TOKEN"
+	telegramBotToken = "8429316573:AAGxyK44KdurKTOq5KX65QLMN1ff5tjcCW8"
 )
 
 type diContainer struct {
@@ -83,7 +83,7 @@ func (d *diContainer) TelegramClient(ctx context.Context) httpClient.TelegramCli
 	return d.telegramClient
 }
 
-func (d *diContainer) TelegramBot(ctx context.Context) *bot.Bot {
+func (d *diContainer) TelegramBot(_ context.Context) *bot.Bot {
 	if d.telegramBot == nil {
 		b, err := bot.New(telegramBotToken)
 		if err != nil {

@@ -14,7 +14,7 @@ import (
 	"github.com/olezhek28/microservices-course-examples/week_5/telegram/clean_arch/ufo/internal/model"
 )
 
-const chatID = 234586218
+const chatID = 1280519780
 
 //go:embed templates/ufo_notification.tmpl
 var templateFS embed.FS

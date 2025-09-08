@@ -20,7 +20,7 @@ import (
 // Конфигурация - замените на свой токен
 const (
 	// Получить у @BotFather в Telegram
-	telegramBotToken = "TELEGRAM_BOT_TOKEN"
+	telegramBotToken = "8429316573:AAGxyK44KdurKTOq5KX65QLMN1ff5tjcCW8"
 )
 
 // GeocodingResponse структура ответа от Open-Meteo Geocoding API
