@@ -23,7 +23,7 @@ services:
 
     networks:
       - microservices-net
-      # Redis подключается к той же общей сети, что и PostgreSQL, и остальные сервисы
+      # Redis подключается к той же общей сети, что и PostgresSQL, и остальные сервисы
 
 networks: # Определение используемой сети
   microservices-net:

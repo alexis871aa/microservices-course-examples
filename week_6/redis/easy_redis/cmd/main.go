@@ -36,7 +36,7 @@ func main() {
 		}
 	}()
 
-	setAndGet(conn)
+	//setAndGet(conn)
 	hsetAndHGet(conn)
 }
 

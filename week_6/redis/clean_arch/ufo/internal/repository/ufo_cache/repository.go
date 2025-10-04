@@ -19,6 +19,7 @@ const (
 )
 
 type repository struct {
+	// нам надо воспринимать как коннект к редису
 	cache cache.RedisClient
 }
 

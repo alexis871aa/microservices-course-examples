@@ -10,6 +10,7 @@ require (
 
 require (
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
 	go.opentelemetry.io/otel v1.36.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.36.0 // indirect
