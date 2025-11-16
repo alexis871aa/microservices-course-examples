@@ -25,5 +25,7 @@ func (r *repository) Create(ctx context.Context, info model.SightingInfo) (strin
 		return "", err
 	}
 
+	// По идее вот тут можно сразу возвращать весь объект, чтобы потом его закешировать
+
 	return newUUID, nil
 }

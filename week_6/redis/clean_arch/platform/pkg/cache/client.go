@@ -18,7 +18,7 @@ type RedisClient interface {
 	SetOperator
 }
 
-// Для домашки понадобится сохранять информацию о том, какие вообще сессии есть у пользователя
+// Для домашки понадобится сохранять информацию о том, какие вообще сессии есть у пользователя!
 
 type SetOperator interface {
 	SAdd(ctx context.Context, key, value string) error

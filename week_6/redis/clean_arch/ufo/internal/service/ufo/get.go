@@ -19,7 +19,7 @@ func (s *service) Get(ctx context.Context, uuid string) (model.Sighting, error) 
 		return model.Sighting{}, err
 	}
 
-	// Сохраняем в кеш (игнорируем ошибки кеширования)
+	// Сохраняем в кеш (игнорируем ошибки кеширования). Можно не игнорировать, но тогда будет страдать доступность. Тут надо смотреть, что вам важнее!
 	_ = s.cacheRepository.Set(ctx, uuid, sighting, s.cacheTTL)
 
 	return sighting, nil
