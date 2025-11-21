@@ -2,8 +2,9 @@ package redis
 
 import (
 	"context"
-	"github.com/pkg/errors"
 	"time"
+
+	"github.com/pkg/errors"
 
 	redigo "github.com/gomodule/redigo/redis"
 	"go.uber.org/zap"
@@ -47,6 +48,7 @@ func (c *client) withConn(ctx context.Context, fn redisFn) error {
 func (c *client) getConn(ctx context.Context) (redigo.Conn, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.connectionTimeout)
 	defer cancel()
+	// коннект берётся из пула, причём с таймаутом
 	conn, err := c.pool.GetContext(ctx)
 	if err != nil {
 		c.logger.Error(ctx, "failed to get redis connection", zap.Error(err))
@@ -57,6 +59,7 @@ func (c *client) getConn(ctx context.Context) (redigo.Conn, error) {
 }
 
 func (c *client) Set(ctx context.Context, key string, value any) error {
+	// как пример метод Set принимает key value и возвращает withConn
 	return c.withConn(ctx, func(ctx context.Context, conn redigo.Conn) error {
 		_, err := conn.Do("SET", key, value)
 		return err
